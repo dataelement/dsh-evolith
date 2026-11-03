@@ -1,0 +1,12 @@
+- insert:
+    - id: dsh-memory-bridge-profile
+      name: dsh-memory-bridge-profile
+      config:
+        serverUrl: http://192.168.106.20:28192
+        readTimeoutMs: 2000
+        superviseTimeoutMs: 120000
+        addTimeoutMs: 600000
+        addPollIntervalMs: 5000
+        maxMemoryChars: 12000
+        maxMessageChars: 50000
+        maxPendingTracesPerSession: 50
