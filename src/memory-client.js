@@ -1,5 +1,7 @@
 import { isReadReceiptId, receiptIdFromText, stripReceiptMarkers } from './receipt-marker.js'
 import { setTimeout as delay } from 'node:timers/promises'
+import { randomUUID } from 'node:crypto'
+import { diagnoseError, credentialFingerprint, redactDiagnostic } from './diagnostics.js'
 
 function isRecord(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -15,7 +17,8 @@ async function responseBody(response) {
   try {
     return JSON.parse(text)
   } catch {
-    throw new Error(`memory server returned invalid JSON (${response.status})`)
+    const error = new Error(`memory server returned invalid JSON (${response.status})`)
+    error.rawResponse = text; error.status = response.status; throw error
   }
 }
 
@@ -31,12 +34,13 @@ export class MemoryServerRequestError extends Error {
 
 /** HTTP client for the weak-supervision read/session/add boundary. */
 export class MemoryClient {
-  constructor(config, fetchImpl = globalThis.fetch) {
+  constructor(config, fetchImpl = globalThis.fetch, diagnostics) {
     if (typeof fetchImpl !== 'function') {
       throw new TypeError('dsh-memory-bridge: a fetch implementation is required')
     }
     this.config = config
     this.fetchImpl = fetchImpl
+    this.diagnostics = diagnostics
     this.serverUrlOverride = undefined
     this.apiTokenOverride = undefined
     this.ensuredGroups = new Set()
@@ -71,7 +75,9 @@ export class MemoryClient {
     return this.apiTokenOverride ?? this.config.apiToken ?? process.env[this.config.apiTokenEnv]
   }
 
-  async request(path, payload, { timeoutMs, signal, method = 'POST' } = {}) {
+  async request(path, payload, { timeoutMs, signal, method = 'POST', diagnosticContext = {}, quiet = false } = {}) {
+    const requestId = 'req_' + randomUUID().replaceAll('-', ''), started = Date.now()
+    const context = { ...diagnosticContext, request_id: requestId, stage: path.includes('weak-supervise') ? 'feedback' : path.includes('/read') ? 'read' : path.includes('/add') ? 'extraction' : 'http' }
     const controller = new AbortController()
     const abortFromParent = () => controller.abort(signal.reason)
     if (signal?.aborted) abortFromParent()
@@ -83,11 +89,18 @@ export class MemoryClient {
     timeout.unref?.()
 
     const token = this.apiToken()
+    const owner = { server_url: this.serverUrl(), credential_fingerprint: credentialFingerprint(token) }
     try {
       const response = await this.fetchImpl(endpoint(this.serverUrl(), path), {
         method,
+        redirect: 'error',
         headers: {
           'content-type': 'application/json',
+          'x-dsh-request-id': requestId,
+          'x-dsh-operation-id': diagnosticContext.operation_id || requestId,
+          'x-dsh-plugin-version': '0.16.0',
+          ...(diagnosticContext.manual_retry ? { 'x-dsh-retry-mode': 'manual' } : {}),
+          ...Object.fromEntries(['session_id', 'workspace_id', 'group_id'].filter(k => diagnosticContext[k]).map(k => ['x-dsh-' + k.replaceAll('_', '-'), String(diagnosticContext[k])])),
           ...(token ? { authorization: `Bearer ${token}` } : {})
         },
         ...(method === 'GET' ? {} : { body: JSON.stringify(payload) }),
@@ -95,9 +108,14 @@ export class MemoryClient {
       })
       const body = await responseBody(response)
       if (!response.ok) {
-        throw new MemoryServerRequestError(response.status, body)
+        const error = new MemoryServerRequestError(response.status, body); error.requestId = response.headers?.get?.('x-dsh-request-id') || requestId; throw error
       }
+      if (!quiet) await this.diagnostics?.log('request.completed', { ...context, status: 'succeeded' }, { path, method, http_status: response.status, duration_ms: Date.now() - started }, owner)
       return body
+    } catch (error) {
+      error.requestId ||= requestId
+      if (!quiet) await this.diagnostics?.log('request.failed', { ...context, status: 'failed', level: 'error' }, redactDiagnostic({ path, method, http_status: error.status, duration_ms: Date.now() - started, input: payload, response: error.body || error.rawResponse, error: error.message, stack: error.stack, diagnosis: diagnoseError(error) }, [token]), owner)
+      throw error
     } finally {
       clearTimeout(timeout)
       signal?.removeEventListener('abort', abortFromParent)
@@ -139,7 +157,7 @@ export class MemoryClient {
     return operation
   }
 
-  async read({ groupId, query, signal }) {
+  async read({ groupId, query, signal, diagnosticContext }) {
     if (!groupId) throw new TypeError('memory read requires groupId')
     const configurationVersion = this.configurationVersion
     await this.ensureGroup({ groupId, signal })
@@ -149,7 +167,7 @@ export class MemoryClient {
     const body = await this.request(
       this.config.readPath,
       { group_id: groupId, query },
-      { timeoutMs: this.config.readTimeoutMs, signal }
+      { timeoutMs: this.config.readTimeoutMs, signal, diagnosticContext }
     )
     if (!isRecord(body)) throw new Error('memory read response must be an object')
     if (typeof body.memory_text !== 'string') {
@@ -172,11 +190,11 @@ export class MemoryClient {
     }
   }
 
-  async weakSupervise({ session, signal }) {
+  async weakSupervise({ session, signal, diagnosticContext }) {
     const body = await this.request(
       this.config.supervisePath,
       session,
-      { timeoutMs: this.config.superviseTimeoutMs, signal }
+      { timeoutMs: this.config.superviseTimeoutMs, signal, diagnosticContext }
     )
     if (!isRecord(body) || !Array.isArray(body.rewarded_traces)) {
       throw new Error('weak-supervision response must contain rewarded_traces')
@@ -184,7 +202,7 @@ export class MemoryClient {
     return body
   }
 
-  async addTrace({ groupId, trace, signal, onProgress }) {
+  async addTrace({ groupId, trace, signal, onProgress, diagnosticContext }) {
     if (!groupId) throw new TypeError('memory add requires groupId')
     const configurationVersion = this.configurationVersion
     const deadline = Date.now() + this.config.addTimeoutMs
@@ -199,7 +217,7 @@ export class MemoryClient {
     let body = await this.request(
       this.config.addPath,
       { group_id: groupId, trace },
-      { timeoutMs: remaining(), signal }
+      { timeoutMs: remaining(), signal, diagnosticContext }
     )
     remaining()
     // Old services finish synchronously. New services acknowledge a durable
@@ -207,20 +225,24 @@ export class MemoryClient {
     if (!isRecord(body) || !body.job_id) return body
     const jobId = String(body.job_id)
     if (!/^ma_[a-zA-Z0-9_-]+$/.test(jobId)) throw new Error('Memory add returned an invalid job id')
-    const report = () => onProgress?.({ job_id: jobId, status: body.status, created_at: body.created_at, started_at: body.started_at, updated_at: body.updated_at, error: body.error })
+    const report = () => onProgress?.({ job_id: jobId, status: body.status, created_at: body.created_at, started_at: body.started_at, updated_at: body.updated_at, error: body.error, retry: body.retry, diagnosis: body.diagnosis, request_id: body.request_id })
     report()
-    while (body.status === 'queued' || body.status === 'running') {
+    while (body.status === 'queued' || body.status === 'running' || body.status === 'failed' && ['scheduled', 'queued'].includes(body.retry?.state)) {
       await delay(Math.min(this.config.addPollIntervalMs, remaining()), undefined, { signal })
       body = await this.request(
         `${this.config.addJobsPath}/${encodeURIComponent(jobId)}`,
         undefined,
-        { timeoutMs: remaining(), signal, method: 'GET' }
+        { timeoutMs: remaining(), signal, method: 'GET', diagnosticContext, quiet: true }
       )
       remaining()
       if (!isRecord(body) || body.job_id !== jobId) throw new Error('Memory add job response did not match the submitted job')
       report()
     }
-    if (body.status === 'failed') throw new Error(`Memory add job failed: ${String(body.error || 'unknown Writer error').slice(0, 1000)}`)
+    if (body.status === 'failed') {
+      const error = new Error(`Memory add job failed: ${String(body.error || 'unknown Writer error').slice(0, 1000)}`)
+      error.diagnosis = body.retry?.state === 'exhausted' ? { code: 'RETRY_EXHAUSTED', title: '自动重试次数已用完', retry_mode: 'blocked', suggestions: ['查看最新错误并修正后手动重试。'] } : body.diagnosis
+      error.retryExhausted = body.retry?.state === 'exhausted'; throw error
+    }
     if (body.status !== 'succeeded' || !isRecord(body.result)) throw new Error('Memory add job did not return a completed result')
     return body.result
   }

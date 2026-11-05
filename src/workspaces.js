@@ -126,7 +126,7 @@ export class WorkspaceStore {
       next.history_uploads ??= []
       next.history_uploads = next.history_uploads.filter(x => x.id !== job.id)
       next.history_uploads.push(structuredClone(job))
-      const completed = next.history_uploads.filter(x => !['queued', 'running'].includes(x.status))
+      const completed = next.history_uploads.filter(x => x.status === 'succeeded')
       if (completed.length > 30) next.history_uploads = next.history_uploads.filter(x => !completed.slice(0, -30).some(old => old.id === x.id))
     })
   }

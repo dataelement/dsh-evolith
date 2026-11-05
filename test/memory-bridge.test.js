@@ -242,6 +242,52 @@ test('a failed durable Writer job remains a pending trace for retry', async () =
   assert.match(snapshot.pending[0].last_error, /Writer failure/)
 })
 
+test('a successful retry without new feedback replaces the previous failed status', async () => {
+  const h = setup(), session = Session.create('retry-after-model-setup')
+  h.runtime.client.weakSupervise = async () => { throw new Error('no model provider is configured for this account') }
+  await begin(h, session, 1, 'task')
+  await end(h, session, 1)
+  assert.equal(h.runtime.snapshot().sessions[0].processing.status, 'failed')
+
+  h.runtime.client.weakSupervise = async () => ({ judgment_count: 0, rewarded_trace_count: 0, rewarded_traces: [] })
+  const result = await h.runtime.syncSession({ session, history: true })
+  const snapshot = h.runtime.snapshot(), processing = snapshot.sessions[0].processing
+  assert.equal(result.ok, true)
+  assert.equal(snapshot.activity.last_supervise_ok, true)
+  assert.equal(processing.status, 'no_changes')
+  assert.equal(processing.new_memory_count, 0)
+  assert.equal(typeof processing.completed_at, 'number')
+  assert.doesNotMatch(processing.message, /no model provider/)
+})
+
+test('no new feedback preserves an already completed extraction result', async () => {
+  const h = setup(), session = Session.create('preserve-saved-memory-status')
+  h.runtime.client.weakSupervise = async () => ({ judgment_count: 1, rewarded_trace_count: 1,
+    rewarded_traces: [{ trace_id: 'saved-trace', episode_key: 'saved-trace', feedback_message_index: 1 }] })
+  h.runtime.client.addTrace = async () => ({ added_memory_ids: ['saved-memory'] })
+  await begin(h, session, 1, 'task')
+  await end(h, session, 1)
+  const completed = structuredClone(h.runtime.snapshot().sessions[0].processing)
+  assert.equal(completed.status, 'saved')
+
+  h.runtime.client.weakSupervise = async () => ({ judgment_count: 0, rewarded_trace_count: 0, rewarded_traces: [] })
+  assert.equal((await h.runtime.syncSession({ session, history: true })).ok, true)
+  assert.deepEqual(h.runtime.snapshot().sessions[0].processing, completed)
+})
+
+test('a retry that still fails reports the current error', async () => {
+  const h = setup(), session = Session.create('retry-still-failing')
+  let failure = 'no model provider is configured for this account'
+  h.runtime.client.weakSupervise = async () => { throw new Error(failure) }
+  await begin(h, session, 1, 'task')
+  await end(h, session, 1)
+  failure = 'model provider rejected the configured credential'
+  assert.equal((await h.runtime.syncSession({ session, history: true })).ok, false)
+  const processing = h.runtime.snapshot().sessions[0].processing
+  assert.equal(processing.status, 'failed')
+  assert.equal(processing.message, failure)
+})
+
 test('queued adds respect a total deadline and cancellation', async () => {
   const fetch = async () => response({ job_id: 'ma_waiting', status: 'running' }, 202)
   const client = new MemoryClient(normalizeConfig({ addTimeoutMs: 20, addPollIntervalMs: 5 }), fetch)

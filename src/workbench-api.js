@@ -65,6 +65,11 @@ export function registerWorkbenchApi(ctx, runtime) {
             const saved = await runtime.workspaceStore.snapshot()
             return sendJson(res, 200, { workspaces: runtime.catalog.workspaces().map(({ session_ids, ...item }) => item), bindings: saved.workspaces.filter(joined), uploads: saved.history_uploads || [], auto_join: runtime.autoJoin ? await runtime.autoJoin.status() : { enabled: false, group_id: '', status: 'disabled' } })
           }
+          if (path === 'retries' && req.method === 'POST') return sendJson(res, 202, await runtime.uploads.retryAll())
+          if (/^uploads\/[^/]+\/retry$/.test(path) && req.method === 'POST') {
+            return sendJson(res, 202, { upload: await runtime.uploads.retry(decodeURIComponent(path.split('/')[1])) })
+          }
+          if (path === 'diagnostic-status' && req.method === 'GET') return sendJson(res, 200, runtime.diagnostics?.status() || {})
           if (path === 'auto-join') {
             if (!runtime.autoJoin) return sendJson(res, 501, { error: '请更新记忆插件后再使用自动加入' })
             if (req.method === 'GET') return sendJson(res, 200, await runtime.autoJoin.status())

@@ -45,6 +45,17 @@ window.__ModuleLoader__.load({
     const button = (text, onClick, disabled = false, primary = false) => h('button', { type: 'button', className: 'dshMemoryButton' + (primary ? ' primary' : ''), onClick, disabled }, text)
     const field = (text, input, help) => h('label', { className: 'dshMemoryField' }, h('span', null, text), input, help ? hint(help) : null)
     const badge = (text, phase) => h('span', { className: 'dshMemoryStatus ' + (['saved', 'succeeded', 'connected'].includes(phase) ? 'good' : busyPhases.has(phase) ? 'busy' : phase === 'failed' ? 'bad' : '') }, h('span', { className: 'dshMemoryDot', 'aria-hidden': true }), text)
+    const retryText = item => {
+      const state = item.retry_state || item.retry?.state
+      return ({ waiting_model: '等待记忆模型配置恢复，恢复后自动继续', scheduled: '已安排自动重试' + (item.next_retry_at || item.retry?.next_retry_at ? '：' + stamp(item.next_retry_at || item.retry.next_retry_at) : ''), queued: '已进入重试队列', exhausted: '自动重试已达上限，请修正原因后手动重试', blocked: '需要修正配置或重新确认会话选择', recovered_elsewhere: '该会话已在后续同步中恢复；此处保留原失败记录', resolved: '重试已完成' })[state] || ''
+    }
+    const diagnosisView = item => {
+      const d = item.diagnosis || item.retry?.diagnosis
+      return h(React.Fragment, null, retryText(item) ? hint(retryText(item)) : null,
+        d?.title ? h('div', { className: 'dshMemoryHint' }, h('strong', null, d.title), d.explanation ? h('p', null, d.explanation) : null,
+          ...(d.suggestions || []).map((text, i) => h('p', { key: i, style: { margin: '3px 0' } }, text))) : null,
+        item.request_id || item.operation_id ? h('details', { className: 'dshMemoryHint' }, h('summary', null, '排查编号'), h('span', { className: 'dshMemoryMono' }, item.request_id || item.operation_id)) : null)
+    }
     function MemoryBridgeSection() {
       const [data, setData] = React.useState({ workspaces: [], bindings: [], uploads: [] }), [connection, setConnection] = React.useState()
       const [groups, setGroups] = React.useState([]), [processing, setProcessing] = React.useState({ jobs: [] })
@@ -55,6 +66,7 @@ window.__ModuleLoader__.load({
       const [loading, setLoading] = React.useState(false), [saving, setSaving] = React.useState(false), [error, setError] = React.useState(''), [message, setMessage] = React.useState('')
       const [urlDraft, setUrlDraft] = React.useState(''), [token, setToken] = React.useState(''), [savingConnection, setSavingConnection] = React.useState(false), [connectionDirty, setConnectionDirty] = React.useState(false)
       const [checking, setChecking] = React.useState(false), [checked, setChecked] = React.useState(null)
+      const [retrying, setRetrying] = React.useState('')
       const [autoEnabled, setAutoEnabled] = React.useState(false), [autoGroup, setAutoGroup] = React.useState(''), [autoDirty, setAutoDirty] = React.useState(false), [savingAuto, setSavingAuto] = React.useState(false)
       const [hoveredPanel, setHoveredPanel] = React.useState(''), [focusedPanel, setFocusedPanel] = React.useState(''), [joinedSearch, setJoinedSearch] = React.useState('')
       const activePanel = hoveredPanel || focusedPanel
@@ -111,6 +123,16 @@ window.__ModuleLoader__.load({
         try { await request('info'); setChecked(true); setMessage('线上记忆服务连接正常。'); await load(true) }
         catch (e) { setChecked(false); setError(e.message) } finally { setChecking(false) }
       }
+      async function retry(id) {
+        setRetrying(id || 'all'); setError(''); setMessage('')
+        try {
+          const result = await request(id ? 'uploads/' + encodeURIComponent(id) + '/retry' : 'retries', 'POST', {})
+          const blocked = result.blocked || []
+          setMessage(id ? '已检查并提交尚未恢复的失败会话；已完成的会话不会重复上传。' : '已提交 ' + result.retried.length + ' 批失败会话。' + (blocked.length ? '另有 ' + blocked.length + ' 批需要重新确认原账号或会话选择。' : ''))
+          if (blocked.length) setError(blocked.map(x => x.error).join('；'))
+          setShowHistory(true); await load()
+        } catch (e) { setError(e.message) } finally { setRetrying('') }
+      }
       async function saveAutoJoin(e) {
         e.preventDefault(); setSavingAuto(true); setError(''); setMessage('')
         try {
@@ -135,6 +157,16 @@ window.__ModuleLoader__.load({
       const activities = [...localActivities, ...remoteActivities].sort((a, b) => Number(busyPhases.has(b.status)) - Number(busyPhases.has(a.status)) || new Date(b.updated_at || 0) - new Date(a.updated_at || 0)).slice(0, 8)
       const selectedCount = all ? sessions.length : selected.size
       const connectionChanged = connectionDirty || Boolean(token.trim())
+      const uploadCard = job => h('div', { key: job.id, className: 'dshMemoryItem' },
+        h('div', { className: 'dshMemoryRow' }, h('strong', null, job.workspace_name || data.bindings.find(b => b.workspace_id === job.workspace_id)?.name || groupTitle(job.group_id)), badge(({ queued: '等待上传', running: '历史处理中', succeeded: '历史处理完成', partial_failed: '部分会话失败', failed: '上传失败' })[job.status] || job.status, job.status === 'partial_failed' ? 'failed' : job.status)),
+        hint(groupTitle(job.group_id) + ' · ' + job.completed + ' / ' + job.total + ' 个会话 · 累计新增 ' + (job.new_memory_count || 0) + ' 条'),
+        h('progress', { className: 'dshMemoryProgress', value: job.completed, max: Math.max(job.total, 1), 'aria-label': '历史会话上传进度' }),
+        job.status === 'succeeded' && !job.new_memory_count ? hint('判断已完成，没有新增：未发现有效反馈或相同内容已保存。') : null,
+        job.error ? h('p', { className: 'dshMemoryHint dshMemoryError' }, job.error) : null,
+        ...job.sessions.filter(s => s.status === 'failed').map(s => h('div', { key: s.session_id },
+          h('details', { className: 'dshMemoryHint' }, h('summary', null, s.retry_state === 'recovered_elsewhere' ? '原失败记录（已恢复）' : '失败会话 · 已尝试 ' + (s.attempts || 1) + ' 次'), h('span', { className: 'dshMemoryMono' }, s.session_id), h('p', null, s.error)), diagnosisView(s))),
+        job.sessions.some(s => s.status === 'failed' && s.retry_state !== 'recovered_elsewhere') ? button(retrying === job.id ? '正在提交…' : '重试本批失败会话', () => retry(job.id), Boolean(retrying) || ['queued', 'running'].includes(job.status)) : null,
+        h('details', { className: 'dshMemoryHint' }, h('summary', null, '任务编号'), h('span', { className: 'dshMemoryMono' }, job.id)))
       return h('section', { className: 'dshMemorySection' },
         h('div', { className: 'dshMemoryRow dshMemoryHeader' }, h('div', null, h('h2', null, '记忆'), hint('选择哪些会话共享经验，并查看每次记忆是否真正保存。')), h('div', { className: 'dshMemoryActions' }, button('刷新', () => load(true)), h('a', { className: 'dshMemoryButton', href: '/dsh-memory-bridge/workbench', target: 'dsh-memory-workbench' }, '记忆管理'))),
         error ? h('p', { role: 'alert', className: 'dshMemoryNotice dshMemoryError' }, error) : null,
@@ -147,7 +179,7 @@ window.__ModuleLoader__.load({
         h('div', { className: 'dshMemoryDashboard', 'data-active': activePanel || 'balanced', onPointerLeave: () => setHoveredPanel(''), onBlurCapture: e => { if (!e.currentTarget.contains(e.relatedTarget)) setFocusedPanel('') } },
           h('section', { className: 'dshMemoryPanel dshMemoryDashboardPanel dshMemoryProcessingPanel', 'aria-label': '记忆处理状态', ...panelEvents('status') },
           h('div', { className: 'dshMemoryRow dshMemoryPanelHead' }, h('div', null, h('h3', null, '记忆处理状态'), hint(scopedBinding ? '当前组：' + (scopedBinding.group_id || '待绑定') : '最近的反馈与提炼结果')), h('span', { className: 'dshMemoryDashboardNudge', 'aria-hidden': true }, '移入展开 ↔')),
-          h('div', { className: 'dshMemoryDashboardBody' }, activities.length ? h('div', null, ...activities.map(a => h('div', { key: a.id, className: 'dshMemoryItem' }, h('div', { className: 'dshMemoryRow' }, h('strong', null, a.title), badge(phaseLabels[a.status] || a.status, a.status)), h('div', { className: 'dshMemoryMeta' }, h('span', null, groupTitle(a.group_id)), h('span', null, busyPhases.has(a.status) ? '已等待 ' + elapsed(a.started_at || a.created_at || a.updated_at) : stamp(a.completed_at || a.updated_at)), ['saved', 'no_changes'].includes(a.status) ? h('span', null, '新增 ' + (a.new_memory_count || 0) + ' 条') : null), hint(a.message || (a.status === 'saved' ? '已保存到服务器，可供同组后续会话读取。' : busyPhases.has(a.status) ? '服务器处理中，尚未保存完成。' : '')), a.status === 'not_triggered' ? hint('未触发与处理慢不同：本轮没有生成提炼任务。') : null, a.error ? h('p', { className: 'dshMemoryHint dshMemoryError' }, a.error) : null, a.read_error ? h('p', { className: 'dshMemoryHint dshMemoryError' }, '最新读取失败，本轮回答可能未使用记忆：' + a.read_error) : null, a.reason ? h('details', { className: 'dshMemoryHint' }, h('summary', null, '查看判断说明'), a.reason) : null))) : h('p', { className: 'dshMemoryEmpty' }, scopedBinding?.mode === 'pending' ? '这个工作区还没有绑定记忆组。' : '暂无处理记录。完成对话后，后台会判断是否需要提炼。')),
+          h('div', { className: 'dshMemoryDashboardBody' }, activities.length ? h('div', null, ...activities.map(a => h('div', { key: a.id, className: 'dshMemoryItem' }, h('div', { className: 'dshMemoryRow' }, h('strong', null, a.title), badge(phaseLabels[a.status] || a.status, a.status)), h('div', { className: 'dshMemoryMeta' }, h('span', null, groupTitle(a.group_id)), h('span', null, busyPhases.has(a.status) ? '已等待 ' + elapsed(a.started_at || a.created_at || a.updated_at) : stamp(a.completed_at || a.updated_at)), ['saved', 'no_changes'].includes(a.status) ? h('span', null, '新增 ' + (a.new_memory_count || 0) + ' 条') : null), hint(a.message || (a.status === 'saved' ? '已保存到服务器，可供同组后续会话读取。' : busyPhases.has(a.status) ? '服务器处理中，尚未保存完成。' : '')), a.status === 'not_triggered' ? hint('未触发与处理慢不同：本轮没有生成提炼任务。') : null, a.error ? h('p', { className: 'dshMemoryHint dshMemoryError' }, a.error) : null, a.read_error ? h('p', { className: 'dshMemoryHint dshMemoryError' }, '最新读取失败，本轮回答可能未使用记忆：' + a.read_error) : null, diagnosisView(a), a.reason ? h('details', { className: 'dshMemoryHint' }, h('summary', null, '查看判断说明'), a.reason) : null))) : h('p', { className: 'dshMemoryEmpty' }, scopedBinding?.mode === 'pending' ? '这个工作区还没有绑定记忆组。' : '暂无处理记录。完成对话后，后台会判断是否需要提炼。')),
           processing.error && connection?.server?.token_configured ? hint('服务器提炼记录暂不可用：' + processing.error) : null,
           h('div', { className: 'dshMemoryDashboardFooter' }, hint('每 4 秒刷新。以“已提炼并保存”和实际新增内容确认结果。'))),
           h('section', { className: 'dshMemoryPanel dshMemoryDashboardPanel dshMemoryWorkspacePanel', 'aria-label': '已加入的工作区', ...panelEvents('workspaces') }, h('div', { className: 'dshMemoryRow dshMemoryPanelHead' }, h('div', null, h('h3', null, '已加入的工作区'), hint(bindings.length + ' 个工作区')), h('span', { className: 'dshMemoryDashboardNudge', 'aria-hidden': true }, '移入展开 ↔')),
@@ -176,8 +208,10 @@ window.__ModuleLoader__.load({
             groupMode === 'new' ? h(React.Fragment, null, h('div', { className: 'dshMemoryGrid' }, field('Group ID（组编号）', h('input', { className: 'dshMemoryInput', value: newId, onChange: e => setNewId(e.target.value), placeholder: '例如 team-alpha', maxLength: 128, autoCapitalize: 'none', spellCheck: false, 'aria-invalid': Boolean(idError), disabled: saving }), '不支持中文。3–128 位小写英文字母、数字或 . _ : -，以字母或数字开头。'), field('显示名称（选填）', h('input', { className: 'dshMemoryInput', value: newName, onChange: e => setNewName(e.target.value), placeholder: '例如 项目讨论组', maxLength: 120, disabled: saving }), '显示名称可以使用中文。')), idError ? h('p', { className: 'dshMemoryHint dshMemoryError', role: 'alert' }, idError) : null) : null,
             groupMode === 'none' ? h('p', { className: 'dshMemoryNotice' }, '先保留工作区和会话选择。当前不上传、不读取记忆；之后可在“已加入的工作区”中绑定记忆组。') : hint('记忆按组共享。历史上传后仍需判断反馈，并不保证每句话都生成记忆。')),
           h('div', { className: 'dshMemoryActions dshMemoryFooter' }, h('button', { type: 'submit', className: 'dshMemoryButton primary', disabled: saving || loading || !workspace || Boolean(idError) || groupMode !== 'none' && (!groupId || !connection?.server?.token_configured) || !all && !selected.size }, saving ? '正在保存…' : groupMode === 'none' ? '加入工作区，稍后绑定' : groupMode === 'new' ? '创建记忆组并加入' : '绑定记忆组并上传'), hint(groupMode === 'none' ? '这一步只保存选择。' : '保存完成状态以后台任务结果为准。'))),
-        data.uploads.length ? h('section', { className: 'dshMemoryPanel' }, h('div', { className: 'dshMemoryRow' }, h('h3', null, '历史会话上传'), button(showHistory ? '收起记录' : '查看最近记录', () => setShowHistory(!showHistory))),
-          showHistory ? h('div', null, ...data.uploads.slice(-5).reverse().map(job => h('div', { key: job.id, className: 'dshMemoryItem' }, h('div', { className: 'dshMemoryRow' }, h('strong', null, groupTitle(job.group_id)), badge(({ queued: '等待上传', running: '历史处理中', succeeded: '历史处理完成', partial_failed: '部分会话失败', failed: '上传失败' })[job.status] || job.status, job.status === 'partial_failed' ? 'failed' : job.status)), hint(job.completed + ' / ' + job.total + ' 个会话 · 本次新增 ' + (job.new_memory_count || 0) + ' 条'), h('progress', { className: 'dshMemoryProgress', value: job.completed, max: Math.max(job.total, 1), 'aria-label': '历史会话上传进度' }), job.status === 'succeeded' && !job.new_memory_count ? hint('没有新增：可能未触发反馈提炼，或相同内容已保存。') : null, job.error ? h('p', { className: 'dshMemoryHint dshMemoryError' }, job.error) : null, ...job.sessions.filter(s => s.error).map(s => h('p', { key: s.session_id, className: 'dshMemoryHint dshMemoryError' }, s.session_id + '：' + s.error))))) : hint('历史上传结果与后续自动提炼分别记录。')) : null)
+        data.uploads.length ? h('section', { className: 'dshMemoryPanel' }, h('div', { className: 'dshMemoryRow' }, h('h3', null, '会话处理与失败重试'), h('div', { className: 'dshMemoryActions' }, button(retrying === 'all' ? '正在提交…' : '重试全部失败会话', () => retry(), Boolean(retrying)), button(showHistory ? '收起记录' : '查看最近记录', () => setShowHistory(!showHistory)))),
+          hint('临时错误最多自动重试 5 次。缺少模型时暂停等待；DSH 与插件运行期间，配置恢复后自动继续。账号、记忆组或选择变化时需要重新确认。'),
+          showHistory ? h('div', null, ...data.uploads.slice().reverse().map(uploadCard)) : hint('历史上传结果与后续自动提炼分别记录。')) : null,
+        hint('已选会话的处理输入、模型响应、结果与错误会记录到公司服务，供管理员排查；密码和访问密钥会脱敏。' + (connection?.diagnostics?.last_error ? '日志待补传：' + connection.diagnostics.last_error : connection?.diagnostics?.pending_events ? '另有 ' + connection.diagnostics.pending_events + ' 条本地记录等待上传。' : '')))
     }
     function apply(ctx) {
       ctx.effect(() => {

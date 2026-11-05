@@ -1,5 +1,5 @@
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 
 import { groupIdFor, normalizeConfig, scopeIdFor } from './src/config.js'
 import { buildEpisodeDraft, directUserText } from './src/episode.js'
@@ -19,6 +19,7 @@ import { registerWorkbenchApi } from './src/workbench-api.js'
 import { DshCatalog } from './src/dsh-catalog.js'
 import { HistoryUploads } from './src/history-uploads.js'
 import { WorkspaceAutoJoin } from './src/auto-join.js'
+import { DiagnosticOutbox, diagnoseError } from './src/diagnostics.js'
 
 export const name = 'dsh-memory-bridge'
 export const inject = ['commands', 'workspaceRegistry', 'sessionQuery']
@@ -113,7 +114,10 @@ export function installMemoryBridge(ctx, rawConfig = {}, dependencies = {}) {
   const config = normalizeConfig(rawConfig)
   if (!config.enabled) return { config, states: new Map() }
 
-  const client = dependencies.client ?? new MemoryClient(config, dependencies.fetchImpl)
+  let client
+  const diagnostics = dependencies.diagnostics ?? new DiagnosticOutbox({ filename: dependencies.diagnosticPath,
+    connection: () => ({ serverUrl: client?.serverUrl?.() || config.serverUrl, apiToken: client?.apiToken?.() || config.apiToken || process.env[config.apiTokenEnv] }), fetchImpl: dependencies.fetchImpl })
+  client = dependencies.client ?? new MemoryClient(config, dependencies.fetchImpl, diagnostics)
   const groupConfigStore = dependencies.groupConfigStore ?? new GroupConfigStore(
     dependencies.groupConfigPath
   )
@@ -166,7 +170,7 @@ export function installMemoryBridge(ctx, rawConfig = {}, dependencies = {}) {
       const saved = (!revised && stored) || await workspaceStore.rememberSession(session.id, { mode: effective.mode, group_id: effective.group_id, server_url: connection.serverUrl, credential_fingerprint: fingerprint, ...(binding.workflow ? { selection_revision: binding.selection_revision } : {}) })
       const scope = binding.workflow ? createHash('sha256').update(JSON.stringify([connection.serverUrl, saved.group_id])).digest('hex') : undefined
       const target = { mode: saved.mode, groupId: saved.group_id, scope, workspaceId: binding.workspace_id, revision: binding.selection_revision, fingerprint,
-        client: dependencies.clientForTarget?.(connection, saved.group_id) ?? new MemoryClient(normalizeConfig({ ...config, ...connection, groupId: saved.group_id, scopeId: saved.group_id }), dependencies.fetchImpl) }
+        client: dependencies.clientForTarget?.(connection, saved.group_id) ?? new MemoryClient(normalizeConfig({ ...config, ...connection, groupId: saved.group_id, scopeId: saved.group_id }), dependencies.fetchImpl, diagnostics) }
       sessionTargets.set(String(session.id), target)
       return target
     }
@@ -312,16 +316,23 @@ export function installMemoryBridge(ctx, rawConfig = {}, dependencies = {}) {
         last_add_error: activity.lastAddError
       },
       sessions,
-      pending
+      pending,
+      diagnostics: diagnostics.status?.()
     }
   }
 
-  const synchronize = async (session, state, signal, { history = false, expected } = {}) => {
+  const synchronize = async (session, state, signal, { history = false, expected, diagnosticContext = {} } = {}) => {
     const previousProcessing = state.processing
+    const operation = { operation_id: diagnosticContext.operation_id || 'sync_' + randomUUID().replaceAll('-', ''),
+      ...diagnosticContext, session_id: String(session.id), stage: 'synchronization' }
+    const logOwner = { server_url: client.serverUrl?.() || config.serverUrl,
+      credential_fingerprint: createHash('sha256').update(client.apiToken?.() || config.apiToken || '').digest('hex') }
     state.syncing = true
     state.lastAddedMemoryCount = 0
     state.lastSyncError = undefined
+    state.lastDiagnosis = undefined
     let syncOk = true
+    await diagnostics.log('session.sync.started', operation, { history, selection_revision: expected?.selection_revision }, logOwner)
     try {
       const target = await resolveTarget(session)
       state.storageMode = target.mode
@@ -334,6 +345,7 @@ export function installMemoryBridge(ctx, rawConfig = {}, dependencies = {}) {
       const activeClient = target.client
       state.lastGroupId = groupId
       state.title = sessionEvents(session).filter(event => event.type === 'session/title').at(-1)?.data?.title || String(session.id)
+      Object.assign(operation, { group_id: groupId, workspace_id: target.workspaceId })
       state.processing = { status: 'judging', started_at: Date.now(), updated_at: Date.now(), message: '正在判断反馈是否需要提炼' }
       const request = buildWeakSupervisionRequest({
         session,
@@ -345,7 +357,11 @@ export function installMemoryBridge(ctx, rawConfig = {}, dependencies = {}) {
       state.lastMessageCount = request.messages.length
 
       try {
-        const result = await activeClient.weakSupervise({ session: request, signal })
+        const result = await activeClient.weakSupervise({ session: request, signal, diagnosticContext: operation })
+        await diagnostics.log('feedback.completed', { ...operation, stage: 'feedback', status: 'succeeded' }, {
+          message_count: request.messages.length, judgment_count: result.judgment_count, rewarded_trace_count: result.rewarded_trace_count,
+          judgments: result.judgments, summary: result.rewarded_trace_count ? '反馈满足提炼条件' : '没有可提炼的有效反馈',
+          reason_code: result.rewarded_trace_count ? 'EFFECTIVE_FEEDBACK' : result.judgment_count ? 'NO_EFFECTIVE_FEEDBACK' : 'NO_NEW_FEEDBACK' }, logOwner)
         state.lastJudgmentCount = Number(result.judgment_count) || 0
         state.lastRewardedTraceCount = Number(result.rewarded_trace_count) || 0
         activity.lastSuperviseAt = Date.now()
@@ -355,7 +371,13 @@ export function installMemoryBridge(ctx, rawConfig = {}, dependencies = {}) {
         if (latestJudgment && !state.lastRewardedTraceCount && !state.pendingTraces.size) {
           state.processing = { status: 'not_triggered', updated_at: Date.now(), feedback_label: latestJudgment.label, message: '未触发提炼：没有识别到需要保存的有效反馈', reason: String(latestJudgment.rationale || '').slice(0, 400) }
         } else if (!state.lastJudgmentCount && !state.pendingTraces.size) {
-          state.processing = previousProcessing || { status: 'no_changes', updated_at: Date.now(), message: '没有新的待处理反馈' }
+          // Keep a completed result, but never restore an old failure after a successful retry.
+          if (['saved', 'no_changes', 'not_triggered'].includes(previousProcessing?.status)) {
+            state.processing = previousProcessing
+          } else {
+            const completedAt = Date.now()
+            state.processing = { status: 'no_changes', updated_at: completedAt, completed_at: completedAt, new_memory_count: 0, message: '处理完成，本次没有新的待处理反馈' }
+          }
         }
 
         for (const trace of result.rewarded_traces) {
@@ -379,6 +401,8 @@ export function installMemoryBridge(ctx, rawConfig = {}, dependencies = {}) {
         activity.lastSuperviseAt = Date.now()
         activity.lastSuperviseOk = false
         activity.lastSuperviseError = error instanceof Error ? error.message : String(error)
+        state.lastDiagnosis = diagnoseError(error)
+        state.lastRequestId = error.requestId
         warn(ctx, 'weak supervision failed; the next turn will retry', error)
       }
 
@@ -395,7 +419,7 @@ export function installMemoryBridge(ctx, rawConfig = {}, dependencies = {}) {
           const now = await resolveTarget(session)
           if (now.mode === 'unselected' || now.groupId !== groupId || now.revision !== target.revision || now.fingerprint !== target.fingerprint) throw new Error('会话选择或连接已变化，未继续上传')
           state.processing = { status: 'queued', started_at: Date.now(), updated_at: Date.now(), message: '正在提交后台提炼任务' }
-          const added = await activeClient.addTrace({ groupId: item.groupId, trace: item.trace, signal, onProgress: progress => {
+          const added = await activeClient.addTrace({ groupId: item.groupId, trace: item.trace, signal, diagnosticContext: operation, onProgress: progress => {
             state.processing = { ...progress, status: progress.status === 'running' ? 'extracting' : progress.status === 'succeeded' ? 'saving' : progress.status, started_at: progress.started_at || progress.created_at, updated_at: Date.now(), message: progress.status === 'queued' ? '等待服务器处理' : progress.status === 'running' ? '服务器正在提炼，尚未保存完成' : '正在确认保存结果' }
           } })
           state.lastAddedMemoryCount += added?.duplicate ? 0 : added?.added_memory_ids?.length || 0
@@ -410,6 +434,7 @@ export function installMemoryBridge(ctx, rawConfig = {}, dependencies = {}) {
           syncOk = false
           state.lastSyncError = error instanceof Error ? error.message : String(error)
           item.lastError = error instanceof Error ? error.message : String(error)
+          state.lastDiagnosis = diagnoseError(error); state.lastRequestId = error.requestId
           activity.lastAddAt = Date.now()
           activity.lastAddOk = false
           activity.lastAddError = item.lastError
@@ -441,27 +466,48 @@ export function installMemoryBridge(ctx, rawConfig = {}, dependencies = {}) {
       activity.lastSuperviseAt = Date.now()
       activity.lastSuperviseOk = false
       activity.lastSuperviseError = error instanceof Error ? error.message : String(error)
+      state.lastDiagnosis = diagnoseError(error); state.lastRequestId = error.requestId
       warn(ctx, 'Memory target unavailable; continuing without Memory synchronization', error)
     } finally {
       state.lastSyncOk = syncOk
-      if (!syncOk) state.processing = { ...state.processing, status: 'failed', updated_at: Date.now(), message: state.lastSyncError || '处理失败，尚未确认保存成功' }
+      if (!syncOk) state.processing = { ...state.processing, status: 'failed', updated_at: Date.now(), message: state.lastSyncError || '处理失败，尚未确认保存成功', diagnosis: state.lastDiagnosis, request_id: state.lastRequestId, operation_id: operation.operation_id }
       state.syncing = false
+      await diagnostics.log('session.sync.completed', { ...operation, status: syncOk ? 'succeeded' : 'failed', level: syncOk ? 'info' : 'error' }, {
+        processing: state.processing, error: state.lastSyncError, diagnosis: state.lastDiagnosis, new_memory_count: state.lastAddedMemoryCount,
+        pending_trace_count: state.pendingTraces.size }, logOwner)
     }
   }
 
-  const syncSession = ({ session, signal, history = false, expected } = {}) => {
+  const syncSession = ({ session, signal, history = false, expected, diagnosticContext } = {}) => {
     if (!session) return Promise.resolve({ ok: false, message: 'Session is required.' })
     const state = stateFor(states, session, config)
     state.syncPromise = state.syncPromise
       .catch(() => undefined)
-      .then(() => synchronize(session, state, signal, { history, expected }))
-      .then(() => ({
+      .then(() => synchronize(session, state, signal, { history, expected, diagnosticContext }))
+      .then(async () => {
+        const result = {
         ok: state.lastSyncOk,
         pending: state.pendingTraces.size,
         added: state.addedTraceCount,
         new_memory_count: state.lastAddedMemoryCount,
-        error: state.lastSyncError
-      }))
+        error: state.lastSyncError,
+        diagnosis: state.lastDiagnosis
+        }
+        if (!history && runtime.uploads) {
+          if (!result.ok) {
+            const target = await resolveTarget(session).catch(() => null)
+            if (target?.workspaceId) {
+              const binding = (await workspaceStore.snapshot()).workspaces.find(w => w.workspace_id === target.workspaceId)
+              if (binding) await runtime.uploads.trackFailure({ ...binding, credential_fingerprint: target.fingerprint }, String(session.id), result)
+            }
+          } else {
+            const target = await resolveTarget(session).catch(() => null)
+            const binding = target?.workspaceId && (await workspaceStore.snapshot()).workspaces.find(w => w.workspace_id === target.workspaceId)
+            if (binding) await runtime.uploads.recoveredElsewhere(String(session.id), { ...binding, credential_fingerprint: target.fingerprint })
+          }
+        }
+        return result
+      })
     return state.syncPromise
   }
 
@@ -511,7 +557,7 @@ export function installMemoryBridge(ctx, rawConfig = {}, dependencies = {}) {
       draft.readPromise = Promise.resolve(target.groupId).then((groupId) => {
         draft.groupId = groupId
         state.lastGroupId = groupId
-        return target.client.read({ groupId, query, signal })
+        return target.client.read({ groupId, query, signal, diagnosticContext: { session_id: String(agent.session.id), workspace_id: target.workspaceId, group_id: groupId, operation_id: 'read_' + randomUUID().replaceAll('-', '') } })
       }).then((result) => {
         draft.readResult = result
         activity.lastReadAt = Date.now()
@@ -605,13 +651,17 @@ export function installMemoryBridge(ctx, rawConfig = {}, dependencies = {}) {
     localConnectionPath: dependencies.localConnectionPath,
     states,
     snapshot,
+    diagnostics,
     syncSession,
     resolveGroupId,
     setGroupId,
     setApiToken,
     setServerUrl
   }
-  runtime.uploads = new HistoryUploads({ store: workspaceStore, catalog, sync: syncSession, validate: async (job, sessionId) => {
+  runtime.uploads = new HistoryUploads({ store: workspaceStore, catalog, sync: syncSession, diagnostics,
+    connection: () => ({ serverUrl: client.serverUrl?.() || config.serverUrl, apiToken: client.apiToken?.() || config.apiToken || '' }),
+    modelReady: async () => !!(await client.request('/v1/workbench/model-status', undefined, { method: 'GET', timeoutMs: 5000, quiet: true })).configured,
+    validate: async (job, sessionId) => {
     const binding = (await workspaceStore.snapshot()).workspaces.find(x => x.workspace_id === job.workspace_id)
     if (!binding || binding.selection_revision !== job.selection_revision || binding.group_id !== job.group_id || binding.server_url !== job.server_url || binding.session_selection === 'selected' && !binding.session_ids.includes(sessionId)) throw new Error('工作区或会话选择已修改，本批历史上传已停止')
     const fingerprint = createHash('sha256').update(client.apiToken?.() || config.apiToken || '').digest('hex')
@@ -624,6 +674,13 @@ export function installMemoryBridge(ctx, rawConfig = {}, dependencies = {}) {
     timer.unref?.()
     return () => clearInterval(timer)
   }, 'dsh-memory-bridge: automatic workspace join')
+  if (typeof ctx.effect === 'function') ctx.effect(() => {
+    const timer = setInterval(() => {
+      void runtime.uploads.tick().catch(error => warn(ctx, 'Memory retry scan failed', error))
+      void diagnostics.flush().catch(error => warn(ctx, 'Memory diagnostic upload failed', error))
+    }, 15000)
+    timer.unref?.(); return () => clearInterval(timer)
+  }, 'dsh-memory-bridge: retries and diagnostics')
   registerWebApi(ctx, runtime)
   registerWorkbenchApi(ctx, runtime)
   return runtime
