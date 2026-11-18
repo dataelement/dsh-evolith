@@ -4,6 +4,13 @@ window.__ModuleLoader__.load({
     const React = require('react'), h = React.createElement, API = '/dsh-memory-bridge/manager/'
     // Keep the implementation available while its settings entry is hidden.
     const SHOW_AUTO_JOIN_SETTINGS = false
+    let hostContext
+    const managementUrl = value => {
+      try {
+        const url = new URL('/workbench', value)
+        return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password ? url.href : undefined
+      } catch { return undefined }
+    }
     const css = [
       '.dshMemorySection{--memory-accent:var(--dsw-alias-brand-primary,#2563eb);width:100%;min-width:0;max-width:1100px;container-type:inline-size;display:flex;flex-direction:column;gap:24px;color:var(--dsw-alias-label-primary,#17212b);font-size:14px;line-height:1.6}',
       '.dshMemorySection *{box-sizing:border-box}.dshMemorySection h2{font-size:24px;line-height:1.35;margin:0;font-weight:650;letter-spacing:-.4px}.dshMemorySection h3{font-size:16px;margin:0;font-weight:600}',
@@ -27,7 +34,7 @@ window.__ModuleLoader__.load({
       '@media(max-width:760px){.dshMemoryGrid{grid-template-columns:1fr}.dshMemoryPanel{padding:18px}.dshMemorySection{gap:18px}.dshMemoryHeader .dshMemoryActions{width:100%}.dshMemoryButton{min-height:40px}}'
     ].join('\n')
     async function request(path, method = 'GET', body) {
-      const r = await fetch(API + path, { method, credentials: 'same-origin', cache: 'no-store', headers: body ? { 'content-type': 'application/json' } : {}, ...(body ? { body: JSON.stringify(body) } : {}) })
+      const r = await fetch(API + path, { method, credentials: 'same-origin', cache: 'no-store', headers: { 'x-dsh-memory-request': '1', ...(body ? { 'content-type': 'application/json' } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) })
       const value = await r.json().catch(() => ({}))
       if (!r.ok) throw new Error(value.error || value.detail || '请求失败：HTTP ' + r.status)
       return value
@@ -74,11 +81,11 @@ window.__ModuleLoader__.load({
       const form = React.useRef(null)
       const load = React.useCallback(async (includeGroups = false) => {
         try {
-          const [d, c, p] = await Promise.all([request('catalog'), status(), request('processing').catch(e => ({ jobs: [], error: e.message }))])
+          const [d, c, p] = await Promise.all([request('catalog'), status(), request('processing' + (workspace ? '?workspace_id=' + encodeURIComponent(workspace) : '')).catch(e => ({ jobs: [], error: e.message }))])
           setData(d); setConnection(c); setProcessing(p)
           if (includeGroups && c.server?.token_configured) { try { setGroups((await request('groups')).groups) } catch (e) { setError(e.message) } }
         } catch (e) { setError(e.message) }
-      }, [])
+      }, [workspace])
       React.useEffect(() => { void load(true); const timer = setInterval(() => load(), 4000); return () => clearInterval(timer) }, [load])
       React.useEffect(() => { if (!connectionDirty && connection?.server?.url) setUrlDraft(connection.server.url) }, [connectionDirty, connection?.server?.url])
       React.useEffect(() => { if (!autoDirty && data.auto_join) { setAutoEnabled(data.auto_join.enabled); setAutoGroup(data.auto_join.group_id || '') } }, [autoDirty, data.auto_join?.enabled, data.auto_join?.group_id])
@@ -123,6 +130,20 @@ window.__ModuleLoader__.load({
         try { await request('info'); setChecked(true); setMessage('线上记忆服务连接正常。'); await load(true) }
         catch (e) { setChecked(false); setError(e.message) } finally { setChecking(false) }
       }
+      function openManagement() {
+        const url = managementUrl(connection?.server?.url)
+        if (!url) { setError('请先保存有效的服务器地址。'); return }
+        try {
+          const sidebar = hostContext?.get?.('sidebarRight')
+          const tabs = hostContext?.get?.('sidebarRightTabs')
+          if (!sidebar?.openTab || !tabs?.get('browser')) {
+            window.open(url, '_blank', 'noopener,noreferrer')
+            return
+          }
+          sidebar.openTab('browser', { params: { url }, revealIfOpened: false })
+          setError(''); setMessage('记忆管理已在 DSH 右侧浏览器打开，关闭设置即可查看。')
+        } catch (e) { setError('内置浏览器未能打开：' + e.message + '。可点击“系统浏览器打开”。') }
+      }
       async function retry(id) {
         setRetrying(id || 'all'); setError(''); setMessage('')
         try {
@@ -151,9 +172,21 @@ window.__ModuleLoader__.load({
       const groupNames = new Map(groups.map(g => [g.group_id, g.name]))
       const groupTitle = id => (groupNames.get(id) || id) + (groupNames.get(id) && groupNames.get(id) !== id ? ' · ' + id : '')
       const boundGroups = new Set(data.bindings.filter(b => b.mode === 'server').map(b => b.group_id))
-      const localActivities = (connection?.sessions || []).filter(s => boundGroups.has(s.group_id) && s.processing && s.processing.status !== 'idle' && (!scopedBinding || s.group_id === scopedBinding.group_id)).map(s => ({ ...s.processing, id: s.session_id, group_id: s.group_id, title: s.title || '会话处理', read_error: s.last_read_ok === false ? s.last_read_error : null }))
+      const remoteById = new Map((processing.jobs || []).map(j => [j.job_id, j]))
+      const completed = new Set(['succeeded', 'saved', 'no_changes'])
+      const localActivities = (connection?.sessions || []).filter(s => boundGroups.has(s.group_id) && s.processing && s.processing.status !== 'idle' && (!selectedWorkspace || scopedBinding && s.group_id === scopedBinding.group_id)).map(s => {
+        const remote = remoteById.get(s.processing.job_id)
+        const binding = data.bindings.find(b => b.workspace_id === s.workspace_id && b.group_id === s.group_id)
+        // A fresh terminal server result must not be hidden by an old local poll.
+        const useRemote = remote && !completed.has(s.processing.status)
+        const activity = useRemote ? { ...s.processing, ...remote, message: undefined, error: remote.error } : s.processing
+        return { ...activity, id: s.session_id, group_id: s.group_id,
+          title: remote?.workspace_name || binding?.name || '会话处理', session_title: remote?.session_title || s.title,
+          status: activity.status === 'succeeded' ? (activity.new_memory_count ? 'saved' : 'no_changes') : activity.status,
+          read_error: s.last_read_ok === false ? s.last_read_error : null }
+      })
       const knownJobs = new Set(localActivities.map(x => x.job_id).filter(Boolean))
-      const remoteActivities = (processing.jobs || []).filter(j => boundGroups.has(j.group_id) && !knownJobs.has(j.job_id) && (!scopedBinding || j.group_id === scopedBinding.group_id)).map(j => ({ ...j, id: j.job_id, title: '服务器提炼任务', status: j.status === 'succeeded' ? (j.new_memory_count ? 'saved' : 'no_changes') : j.status }))
+      const remoteActivities = (processing.jobs || []).filter(j => boundGroups.has(j.group_id) && !knownJobs.has(j.job_id) && (!selectedWorkspace || scopedBinding && j.group_id === scopedBinding.group_id)).map(j => ({ ...j, id: j.job_id, title: j.workspace_name || j.title || '组内历史记录（来源未识别）', status: j.status === 'succeeded' ? (j.new_memory_count ? 'saved' : 'no_changes') : j.status }))
       const activities = [...localActivities, ...remoteActivities].sort((a, b) => Number(busyPhases.has(b.status)) - Number(busyPhases.has(a.status)) || new Date(b.updated_at || 0) - new Date(a.updated_at || 0)).slice(0, 8)
       const selectedCount = all ? sessions.length : selected.size
       const connectionChanged = connectionDirty || Boolean(token.trim())
@@ -168,7 +201,7 @@ window.__ModuleLoader__.load({
         job.sessions.some(s => s.status === 'failed' && s.retry_state !== 'recovered_elsewhere') ? button(retrying === job.id ? '正在提交…' : '重试本批失败会话', () => retry(job.id), Boolean(retrying) || ['queued', 'running'].includes(job.status)) : null,
         h('details', { className: 'dshMemoryHint' }, h('summary', null, '任务编号'), h('span', { className: 'dshMemoryMono' }, job.id)))
       return h('section', { className: 'dshMemorySection' },
-        h('div', { className: 'dshMemoryRow dshMemoryHeader' }, h('div', null, h('h2', null, '记忆'), hint('选择哪些会话共享经验，并查看每次记忆是否真正保存。')), h('div', { className: 'dshMemoryActions' }, button('刷新', () => load(true)), h('a', { className: 'dshMemoryButton', href: '/dsh-memory-bridge/workbench', target: 'dsh-memory-workbench' }, '记忆管理'))),
+        h('div', { className: 'dshMemoryRow dshMemoryHeader' }, h('div', null, h('h2', null, '记忆'), hint('选择哪些会话共享经验，并查看每次记忆是否真正保存。')), h('div', { className: 'dshMemoryActions' }, button('刷新', () => load(true)), button('记忆管理', openManagement, !managementUrl(connection?.server?.url)), h('a', { className: 'dshMemoryButton', href: managementUrl(connection?.server?.url), target: '_blank', rel: 'noopener noreferrer' }, '系统浏览器打开'))),
         error ? h('p', { role: 'alert', className: 'dshMemoryNotice dshMemoryError' }, error) : null,
         message ? h('p', { role: 'status', className: 'dshMemoryNotice' }, message) : null,
         h('section', { className: 'dshMemoryPanel', 'aria-label': '线上服务连接' },
@@ -179,7 +212,7 @@ window.__ModuleLoader__.load({
         h('div', { className: 'dshMemoryDashboard', 'data-active': activePanel || 'balanced', onPointerLeave: () => setHoveredPanel(''), onBlurCapture: e => { if (!e.currentTarget.contains(e.relatedTarget)) setFocusedPanel('') } },
           h('section', { className: 'dshMemoryPanel dshMemoryDashboardPanel dshMemoryProcessingPanel', 'aria-label': '记忆处理状态', ...panelEvents('status') },
           h('div', { className: 'dshMemoryRow dshMemoryPanelHead' }, h('div', null, h('h3', null, '记忆处理状态'), hint(scopedBinding ? '当前组：' + (scopedBinding.group_id || '待绑定') : '最近的反馈与提炼结果')), h('span', { className: 'dshMemoryDashboardNudge', 'aria-hidden': true }, '移入展开 ↔')),
-          h('div', { className: 'dshMemoryDashboardBody' }, activities.length ? h('div', null, ...activities.map(a => h('div', { key: a.id, className: 'dshMemoryItem' }, h('div', { className: 'dshMemoryRow' }, h('strong', null, a.title), badge(phaseLabels[a.status] || a.status, a.status)), h('div', { className: 'dshMemoryMeta' }, h('span', null, groupTitle(a.group_id)), h('span', null, busyPhases.has(a.status) ? '已等待 ' + elapsed(a.started_at || a.created_at || a.updated_at) : stamp(a.completed_at || a.updated_at)), ['saved', 'no_changes'].includes(a.status) ? h('span', null, '新增 ' + (a.new_memory_count || 0) + ' 条') : null), hint(a.message || (a.status === 'saved' ? '已保存到服务器，可供同组后续会话读取。' : busyPhases.has(a.status) ? '服务器处理中，尚未保存完成。' : '')), a.status === 'not_triggered' ? hint('未触发与处理慢不同：本轮没有生成提炼任务。') : null, a.error ? h('p', { className: 'dshMemoryHint dshMemoryError' }, a.error) : null, a.read_error ? h('p', { className: 'dshMemoryHint dshMemoryError' }, '最新读取失败，本轮回答可能未使用记忆：' + a.read_error) : null, diagnosisView(a), a.reason ? h('details', { className: 'dshMemoryHint' }, h('summary', null, '查看判断说明'), a.reason) : null))) : h('p', { className: 'dshMemoryEmpty' }, scopedBinding?.mode === 'pending' ? '这个工作区还没有绑定记忆组。' : '暂无处理记录。完成对话后，后台会判断是否需要提炼。')),
+          h('div', { className: 'dshMemoryDashboardBody' }, activities.length ? h('div', null, ...activities.map(a => h('div', { key: a.id, className: 'dshMemoryItem' }, h('div', { className: 'dshMemoryRow' }, h('strong', null, a.title), badge(phaseLabels[a.status] || a.status, a.status)), a.session_title ? hint(a.session_title) : null, h('div', { className: 'dshMemoryMeta' }, h('span', null, groupTitle(a.group_id)), h('span', null, busyPhases.has(a.status) ? '已等待 ' + elapsed(a.started_at || a.created_at || a.updated_at) : stamp(a.completed_at || a.updated_at)), ['saved', 'no_changes'].includes(a.status) ? h('span', null, '新增 ' + (a.new_memory_count || 0) + ' 条') : null), hint(a.message || (a.status === 'saved' ? '已保存到服务器，可供同组后续会话读取。' : busyPhases.has(a.status) ? '服务器处理中，尚未保存完成。' : '')), a.status === 'not_triggered' ? hint('未触发与处理慢不同：本轮没有生成提炼任务。') : null, a.error ? h('p', { className: 'dshMemoryHint dshMemoryError' }, a.error) : null, a.read_error ? h('p', { className: 'dshMemoryHint dshMemoryError' }, '最新读取失败，本轮回答可能未使用记忆：' + a.read_error) : null, diagnosisView(a), a.reason ? h('details', { className: 'dshMemoryHint' }, h('summary', null, '查看判断说明'), a.reason) : null))) : h('p', { className: 'dshMemoryEmpty' }, scopedBinding?.mode === 'pending' ? '这个工作区还没有绑定记忆组。' : '暂无处理记录。完成对话后，后台会判断是否需要提炼。')),
           processing.error && connection?.server?.token_configured ? hint('服务器提炼记录暂不可用：' + processing.error) : null,
           h('div', { className: 'dshMemoryDashboardFooter' }, hint('每 4 秒刷新。以“已提炼并保存”和实际新增内容确认结果。'))),
           h('section', { className: 'dshMemoryPanel dshMemoryDashboardPanel dshMemoryWorkspacePanel', 'aria-label': '已加入的工作区', ...panelEvents('workspaces') }, h('div', { className: 'dshMemoryRow dshMemoryPanelHead' }, h('div', null, h('h3', null, '已加入的工作区'), hint(bindings.length + ' 个工作区')), h('span', { className: 'dshMemoryDashboardNudge', 'aria-hidden': true }, '移入展开 ↔')),
@@ -214,6 +247,7 @@ window.__ModuleLoader__.load({
         hint('已选会话的处理输入、模型响应、结果与错误会记录到公司服务，供管理员排查；密码和访问密钥会脱敏。' + (connection?.diagnostics?.last_error ? '日志待补传：' + connection.diagnostics.last_error : connection?.diagnostics?.pending_events ? '另有 ' + connection.diagnostics.pending_events + ' 条本地记录等待上传。' : '')))
     }
     function apply(ctx) {
+      hostContext = ctx
       ctx.effect(() => {
         let style = document.querySelector('style[data-plugin-css="dsh-memory-bridge"]')
         if (!style) { style = document.createElement('style'); style.dataset.pluginCss = 'dsh-memory-bridge'; document.head.appendChild(style) }

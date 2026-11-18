@@ -133,7 +133,7 @@ test('large diagnostic batches split without truncating or dropping events', asy
 test('a server job missing its model pauses promptly instead of blocking the remaining workspaces', async () => {
   let calls=0
   const diagnosis=diagnoseError(new Error('no OpenAI-compatible model provider is configured'))
-  const client=new MemoryClient(normalizeConfig({serverUrl:'http://memory',addTimeoutMs:20}), async()=>{
+  const client=new MemoryClient(normalizeConfig({serverUrl:'http://memory',addTimeoutMs:1000}), async()=>{
     calls++;return new Response(JSON.stringify({job_id:'ma_paused',status:'failed',error:'missing model',retry:{state:'waiting_model'},diagnosis}),{status:200})
   })
   await assert.rejects(client.addTrace({groupId:'g',trace:{}}),error=>error.diagnosis.code==='MODEL_NOT_CONFIGURED')

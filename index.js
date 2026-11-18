@@ -253,6 +253,7 @@ export function installMemoryBridge(ctx, rawConfig = {}, dependencies = {}) {
         added_trace_count: state.addedTraceCount,
         pending_count: state.pendingTraces.size,
         title: state.title,
+        workspace_id: state.workspaceId,
         processing: state.processing,
         last_read_ok: state.lastReadOk,
         last_read_at: state.lastReadAt,
@@ -344,7 +345,9 @@ export function installMemoryBridge(ctx, rawConfig = {}, dependencies = {}) {
       const groupId = target.groupId
       const activeClient = target.client
       state.lastGroupId = groupId
-      state.title = sessionEvents(session).filter(event => event.type === 'session/title').at(-1)?.data?.title || String(session.id)
+      const title = sessionEvents(session).filter(event => event.type === 'session/title').at(-1)?.data?.title
+      state.title = (typeof title === 'string' ? title : title?.text || title?.title) || String(session.id)
+      state.workspaceId = target.workspaceId
       Object.assign(operation, { group_id: groupId, workspace_id: target.workspaceId })
       state.processing = { status: 'judging', started_at: Date.now(), updated_at: Date.now(), message: '正在判断反馈是否需要提炼' }
       const request = buildWeakSupervisionRequest({

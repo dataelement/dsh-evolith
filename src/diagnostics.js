@@ -70,7 +70,7 @@ export class DiagnosticOutbox {
     const c = this.connection?.() || {}, owner = credentialFingerprint(c.apiToken)
     return this.mutate(() => {
       const item = redactDiagnostic({ id: 'cli_' + randomUUID().replaceAll('-', ''), event, occurred_at: new Date().toISOString(), ...fields,
-        details: { plugin_version: '0.16.0', node_version: process.version, platform: process.platform, architecture: process.arch, ...details } }, [c.apiToken])
+        details: { plugin_version: '0.16.1', node_version: process.version, platform: process.platform, architecture: process.arch, ...details } }, [c.apiToken])
       this.events.push({ server_url: originalOwner?.server_url || c.serverUrl, credential_fingerprint: originalOwner?.credential_fingerprint || owner, event: item }); return item.id
     }).catch(error => { this.lastError = error.message })
   }
