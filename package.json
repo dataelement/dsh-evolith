@@ -1,14 +1,14 @@
 {
   "name": "dsh-memory-bridge-profile",
-  "version": "0.16.2",
+  "version": "0.16.3",
   "description": "DSH Memory plugin for existing workspaces and conversations, connected to company intranet memory services.",
   "type": "module",
   "main": "./index.js",
-  "icon": "./assets/icon.png",
+  "icon": "./assets/icon.webp",
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",
-    "./icon": "./assets/icon.png",
+    "./icon": "./assets/icon.webp",
     "./memory-client": "./src/memory-client.js",
     "./episode": "./src/episode.js",
     "./group-config": "./src/group-config.js",
@@ -37,7 +37,7 @@
     "client.js",
     "src/**/*.js",
     "static/*",
-    "assets/icon.png",
+    "assets/icon.webp",
     "cordis.patch.yml",
     "README.md"
   ],
