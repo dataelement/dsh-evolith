@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { isTrustedRequest, readJson, sendJson } from './web-api.js'
+import { ProcessingCatalog } from './processing.js'
 
 const BASE = '/dsh-memory-bridge/manager'
 const ASSETS = '/dsh-memory-bridge/workbench-assets'
@@ -25,6 +26,7 @@ export async function managementRequest(connection, path, method = 'GET', payloa
 }
 
 export function registerWorkbenchApi(ctx, runtime) {
+  const processing = new ProcessingCatalog(runtime)
   ctx.inject(['webServer'], webCtx => webCtx.effect(() => {
     const serverConnection = () => ({ serverUrl: runtime.client.serverUrl(), apiToken: runtime.client.apiToken() })
     const exclusive = (id, fn) => runtime.autoJoin ? runtime.autoJoin.exclusive(id, fn) : fn()
@@ -146,9 +148,12 @@ export function registerWorkbenchApi(ctx, runtime) {
           if (!['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) return sendJson(res, 405, { error: 'Method not allowed' })
           const connection = await connectionFor(mode)
           url.searchParams.delete('location')
+          const selectedWorkspace = path === 'processing' ? url.searchParams.get('workspace_id') || '' : ''
+          if (path === 'processing') url.searchParams.delete('workspace_id')
           const query = url.searchParams.toString()
           const result = await managementRequest(connection, path + (query ? '?' + query : ''), req.method, payload)
           if (result.status === 204) { res.writeHead(204); res.end(); return }
+          if (path === 'processing' && req.method === 'GET') return sendJson(res, result.status, await processing.enrich(result.body, connection, selectedWorkspace))
           return sendJson(res, result.status, { ...result.body, ...(path === 'info' ? { host_managed: true } : {}) })
         } catch (error) {
           sendJson(res, error.status || 400, { error: error.message })

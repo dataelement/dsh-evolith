@@ -25,10 +25,20 @@ export function isTrustedRequest(req, mutation = false) {
 
   const origin = req.headers.origin
   const host = req.headers.host
-  if (typeof origin !== 'string' || typeof host !== 'string') return false
+  if (typeof host !== 'string') return false
   try {
+    const destination = new URL('http://' + host)
+    if (destination.host !== host || !['127.0.0.1', '[::1]'].includes(destination.hostname)) return false
+    // Desktop 0.14 forwards dsh-app://app requests without an Origin header.
+    // A custom header requires a browser preflight for cross-origin requests;
+    // this API does not grant CORS access. Never bypass a present, foreign Origin.
+    if (origin === undefined) {
+      return req.headers['x-dsh-memory-request'] === '1' &&
+        !['cross-site', 'same-site'].includes(req.headers['sec-fetch-site'])
+    }
+    if (typeof origin !== 'string') return false
     const parsed = new URL(origin)
-    return parsed.protocol === 'http:' && parsed.host === host && isLoopback(parsed.hostname)
+    return parsed.origin === destination.origin && origin === parsed.origin
   } catch {
     return false
   }

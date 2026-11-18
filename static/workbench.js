@@ -13,7 +13,7 @@ function button(text, fn, cls = 'link-button') { const el = node('button', text,
 function notice(text, error = false) { const el = $('#notice'); el.hidden = !text; el.textContent = text || ''; el.className = 'notice' + (error ? ' error' : '') }
 async function api(path, { method = 'GET', body, location = state.location } = {}) {
   const separator = path.includes('?') ? '&' : '?'
-  const response = await fetch(BASE + '/' + path + separator + 'location=' + encodeURIComponent(location), { method, cache: 'no-store', headers: { ...(body ? { 'content-type': 'application/json' } : {}), ...(state.spaceId && !hostManaged && path !== 'info' ? { 'x-memory-space': state.spaceId } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) })
+  const response = await fetch(BASE + '/' + path + separator + 'location=' + encodeURIComponent(location), { method, cache: 'no-store', headers: { ...(hostManaged ? { 'x-dsh-memory-request': '1' } : {}), ...(body ? { 'content-type': 'application/json' } : {}), ...(state.spaceId && !hostManaged && path !== 'info' ? { 'x-memory-space': state.spaceId } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) })
   if (response.status === 401 && !hostManaged) { location.replace('/login'); throw new Error('请重新登录') }
   if (response.status === 204) return null
   const content = await response.json().catch(() => ({ error: '服务返回了无法识别的结果，请检查登录或服务地址' }))

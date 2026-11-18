@@ -98,7 +98,7 @@ export class MemoryClient {
           'content-type': 'application/json',
           'x-dsh-request-id': requestId,
           'x-dsh-operation-id': diagnosticContext.operation_id || requestId,
-          'x-dsh-plugin-version': '0.16.0',
+          'x-dsh-plugin-version': '0.16.1',
           ...(diagnosticContext.manual_retry ? { 'x-dsh-retry-mode': 'manual' } : {}),
           ...Object.fromEntries(['session_id', 'workspace_id', 'group_id'].filter(k => diagnosticContext[k]).map(k => ['x-dsh-' + k.replaceAll('_', '-'), String(diagnosticContext[k])])),
           ...(token ? { authorization: `Bearer ${token}` } : {})
