@@ -216,7 +216,7 @@ async function runReplay({name,enabled=true,rs=rounds,memoryFailure=false,slowCo
     }
     if(!enabled){assert.equal(calls.length,0,'Disabled mode contacted memory service');}
     if(!memoryFailure){assert.equal(stats.model_calls,countSteps(rs));assert.equal(stats.tool_calls,countTools(rs));}
-    if(verificationProbe){const saved=await verificationStore.list(consent.owner(),handle.agent.session.id);assert.equal(saved.length,1);assert.equal(saved[0].memory_id,'regression-confirmed-fact');assert.equal(saved[0].usage_source,'actor_reported_use');assert.match(saved[0].memory_text,/not an authorized company execution/);stats.verified_records=saved.length;await consent.set(handle.agent.session.id,false);await runtime.syncVerificationTools(handle.agent);assert.ok(!handle.agent.ctx.get('tools').schemas().some(t=>t.name===VERIFIED_MEMORY_TOOL),'Tool still exposed after opt-out');}
+    if(verificationProbe){const saved=await verificationStore.list(consent.owner(),handle.agent.session.id);assert.equal(saved.length,1);assert.equal(saved[0].memory_id,'regression-confirmed-fact');assert.equal(saved[0].usage_source,'actor_reported_use');assert.equal(saved[0].benefit_type,'avoid_error');assert.match(saved[0].memory_text,/not an authorized company execution/);stats.verified_records=saved.length;await consent.set(handle.agent.session.id,false);await runtime.syncVerificationTools(handle.agent);assert.ok(!handle.agent.ctx.get('tools').schemas().some(t=>t.name===VERIFIED_MEMORY_TOOL),'Tool still exposed after opt-out');}
     stats.prune_events=handle.agent.session.snapshotEvents().filter(e=>e.type==='compaction/prune').length;
     stats.api_calls=calls.map(c=>({path:c.path,turn:c.turn}));
     return stats;
@@ -247,7 +247,7 @@ await check('memory_failure_is_visible_and_turn_closes',async()=>{const s=await 
 
 await check('memory_usage_tool_resolves_memory_id_in_native_loop',async()=>{
   const rs=structuredClone(rounds.slice(0,5));
-  rs[4].steps.splice(-1,0,{text:'',calls:[{id:'case022-verify-memory-1',name:VERIFIED_MEMORY_TOOL,arguments:{memory_id:'regression-confirmed-fact',title:'银行受理不代表公司已授权',usage_summary:'根据记忆区分银行受理与公司授权，规避把银行受理误当成公司批准的风险。'},result:'',is_error:false}]});
+  rs[4].steps.splice(-1,0,{text:'',calls:[{id:'case022-verify-memory-1',name:VERIFIED_MEMORY_TOOL,arguments:{benefit_type:'avoid_error',memory_id:'regression-confirmed-fact',title:'银行受理不代表公司已授权',usage_summary:'根据记忆区分银行受理与公司授权，规避把银行受理误当成公司批准的风险。'},result:'',is_error:false}]});
   const s=await runReplay({name:'verified_memory',rs,verificationProbe:true});return {verified_records:s.verified_records,real_tool_dispatched:true,tool_removed_on_connection_reset:true};
 });
 

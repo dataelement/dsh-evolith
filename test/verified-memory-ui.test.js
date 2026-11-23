@@ -76,15 +76,11 @@ test('three-field usage records show benefit and resolved memory without claimin
  const text=f.text(f.render());assert.match(text,/规避向旧收款方付款/);assert.match(text,/Confirm the current payee/);assert.match(text,/第4轮/);assert.ok(!text.includes('已使用 · 已核实'));assert.ok(!text.includes('证据原文'));
 });
 
-for(const [summary,expected] of [
- ['根据记忆规避了向旧收款方付款的风险。',['避免问题 BUFF']],
- ['复用已记录的配置，省去了再次读取项目配置的工具调用。',['节省调用 BUFF']],
- ['避免了误答成 pytest 的错误，并省去了重复查询项目配置。',['避免问题 BUFF','节省调用 BUFF']],
- ['复用了命令语法，随后仍查询了当前项目规则。',[]],
- ['没有避免任何错误，也没有减少重复查询。',[]],
- ['Used memory to avoid an incorrect payment and saved a repeated lookup.',['避免问题 BUFF','节省调用 BUFF']]
-])test('benefit BUFFs match explicit usage claim: '+summary,async()=>{
- const f=await viewFixture([{id:'buff',title:'测试记忆',memory_text:'Stored memory',usage_summary:summary,used_turn:1,usage_source:'actor_reported_use'}]);
+for(const [benefit_type,expected] of [
+ ['avoid_error',['避免问题 BUFF']],['save_tool_calls',['节省调用 BUFF']],['both',['避免问题 BUFF','节省调用 BUFF']],
+ [undefined,[]],['unknown',[]]
+])test('benefit BUFFs use only the explicit enum: '+benefit_type,async()=>{
+ const f=await viewFixture([{id:'buff',title:'测试记忆',memory_text:'Stored memory',benefit_type,usage_summary:'避免了误答成 pytest 的错误，并省去了重复查询。',used_turn:1,usage_source:'actor_reported_use'}]);
  const badges=f.nodes(f.render()).filter(n=>n.props.role==='img').map(n=>n.props['aria-label']);assert.deepEqual(badges,expected);
- for(const badge of f.nodes(f.render()).filter(n=>n.props.role==='img')){assert.match(badge.props.title,/不代表独立验证/);assert.ok(f.nodes(badge).some(n=>n.type==='svg'));}
+ for(const badge of f.nodes(f.render()).filter(n=>n.props.role==='img')){assert.match(badge.props.title,/助手选择/);assert.ok(f.nodes(badge).some(n=>n.type==='svg'));}
 });

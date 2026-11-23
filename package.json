@@ -1,6 +1,6 @@
 {
   "name": "dsh-memory-bridge-profile",
-  "version": "0.18.13",
+  "version": "0.18.14",
   "description": "DSH Memory plugin for existing workspaces and conversations, connected to company intranet memory services.",
   "type": "module",
   "main": "./index.js",

@@ -71,17 +71,11 @@ window.__ModuleLoader__.load({ id: "dsh-memory-bridge-profile", factory: (requir
     });
   }
   function memoryBenefits(record){
-    const text=String(record.usage_summary||record.application||'');
-    const negated=(start)=>/(?:没有|并未|未能|没能|无法|不能|未|不曾|并没有|not|never|didn't|doesn't)\s*(?:实际|真正|有效|成功)?\s*$/i.test(text.slice(Math.max(0,start-20),start));
-    const matches=(pattern)=>[...text.matchAll(pattern)].some(m=>!negated(m.index));
-    return {
-      avoid:matches(/(?:避免|规避|防止|防范|纠正|阻止)[^。；;!?！？\n]{0,75}(?:错误|出错|误答|误用|误判|误把|误当|误操作|风险|漏算|漏掉|遗漏|错付|不足|损失|偏差|过期)|(?:avoid(?:ed|s|ing)?|prevent(?:ed|s|ing)?)[^.;!?\n]{0,65}(?:mistake|error|risk|incorrect|wrong)/gi),
-      save:matches(/(?:省去|省下|免去|减少|节省|节约)[^。；;!?！？\n]{0,30}(?:查询|检索|搜索|查找|查阅|读取|工具调用)|(?:无需|不必|不用|不需要)(?:再|再次)[^。；;!?！？\n]{0,15}(?:查询|检索|搜索|查阅|读取|调用)|(?:saved?|skip(?:ped)?|eliminat(?:e|ed))[^.;!?\n]{0,35}(?:lookup|quer(?:y|ies)|search|tool calls?|file reads?)/gi)
-    };
+    return {avoid:record.benefit_type==='avoid_error'||record.benefit_type==='both',save:record.benefit_type==='save_tool_calls'||record.benefit_type==='both'};
   }
   function benefitBadge(kind){
     const avoid=kind==='avoid',label=avoid?'避免问题':'节省调用';
-    return h('span',{className:'dsh-evolith-buff dsh-evolith-buff--'+kind,role:'img','aria-label':label+' BUFF',title:'根据助手的用途说明标注，不代表独立验证或实际调用次数测量'},
+    return h('span',{className:'dsh-evolith-buff dsh-evolith-buff--'+kind,role:'img','aria-label':label+' BUFF',title:'根据助手选择的收益类型标注，不代表独立验证或实际调用次数测量'},
       h('span',{className:'dsh-evolith-buff-icon','aria-hidden':true},h('svg',{width:23,height:23,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:1.8,strokeLinecap:'round',strokeLinejoin:'round'},
         avoid?h('path',{d:'M12 2.5 20 6v5.5c0 4.4-3.7 7.8-8 10-4.3-2.2-8-5.6-8-10V6Z'}):h('path',{d:'m14 2-9 12h6l-1 8 9-12h-6Z',fill:'currentColor',stroke:'none'}),
         avoid?h('path',{d:'m8.2 11.5 2.6 2.6 5-5'}):null)),
