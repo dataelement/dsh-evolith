@@ -34,6 +34,7 @@ window.__ModuleLoader__.load({ id: "dsh-memory-bridge-profile", factory: (requir
 .dsh-evolith-verified-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.dsh-evolith-verified-heading h2{font-size:15px;margin:0 0 3px;font-weight:600}.dsh-evolith-verified-muted,.dsh-evolith-verified-meta{color:var(--dsw-alias-label-tertiary,#7b8594);font-size:12px}
 .dsh-evolith-verified-refresh{border:1px solid var(--dsw-alias-border-l1,#e1e6ed);border-radius:7px;background:transparent;color:inherit;font:inherit;padding:3px 9px;cursor:pointer}.dsh-evolith-verified-explanation{color:var(--dsw-alias-label-secondary,#647084);font-size:12px;margin:14px 0 18px}.dsh-evolith-verified-empty{border:1px dashed var(--dsw-alias-border-l1,#e1e6ed);border-radius:10px;padding:18px 14px;margin-top:20px}.dsh-evolith-verified-empty p{font-size:12px;color:var(--dsw-alias-label-secondary,#647084)}
 .dsh-evolith-verified-card{border:1px solid var(--dsw-alias-border-l1,#e1e6ed);border-radius:10px;padding:16px;margin:12px 0;overflow-wrap:anywhere}.dsh-evolith-verified-status{display:flex;align-items:center;gap:6px;color:#168058;font-size:11px;font-weight:500}.dsh-evolith-verified-round{margin-left:auto;color:var(--dsw-alias-label-tertiary,#7b8594);font-weight:400}.dsh-evolith-verified-eyebrow{font-size:11px;color:var(--dsw-alias-label-tertiary,#7b8594);margin-top:12px}.dsh-evolith-verified-title{font-size:15px;line-height:1.6;font-weight:600;margin:3px 0 13px;color:var(--dsw-alias-label-primary,#27364c)}.dsh-evolith-verified-summary{padding:0 0 0 10px;border-left:2px solid var(--dsw-alias-border-l1,#dce5f2)}.dsh-evolith-verified-summary strong{font-size:11px;font-weight:500;color:var(--dsw-alias-label-secondary,#647084)}.dsh-evolith-verified-summary p{margin:4px 0;font-size:13px;line-height:1.65;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}.dsh-evolith-verified-details{margin-top:10px;border-top:1px solid var(--dsw-alias-border-l1,#e1e6ed);padding-top:10px;font-size:12px}.dsh-evolith-verified-details summary{cursor:pointer;color:var(--dsw-alias-label-tertiary,#7b8594)}.dsh-evolith-verified-details pre{white-space:pre-wrap;max-height:180px;overflow:auto;background:var(--dsw-alias-state-business-tertiary,#f0f5fe);padding:9px;border-radius:6px;font-size:11px}.dsh-evolith-verified-card-title{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}.dsh-evolith-verified-card-title strong{font-size:12px;font-weight:600}.dsh-evolith-verified-badge{font-size:11px;background:#e8f6ef;color:#16734c;border-radius:5px;padding:1px 6px;white-space:nowrap}.dsh-evolith-verified-meta{margin-top:5px}.dsh-evolith-verified-card dl{margin:12px 0 0}.dsh-evolith-verified-card dt{font-size:12px;color:var(--dsw-alias-label-secondary,#647084);margin-top:9px}.dsh-evolith-verified-card dd{margin:3px 0 0}.dsh-evolith-verified-card blockquote{margin:5px 0;padding:7px 10px;border-left:2px solid #75a5ef;background:var(--dsw-alias-state-business-tertiary,#f0f5fe);white-space:pre-wrap}.dsh-evolith-verified-original{font-size:12px;margin-top:10px}.dsh-evolith-verified-original summary{cursor:pointer;color:var(--dsw-alias-label-secondary,#647084)}.dsh-evolith-verified-original p{white-space:pre-wrap}.dsh-evolith-verified-error{color:#b42318}
+.dsh-evolith-buffs{display:flex;flex-wrap:wrap;gap:9px;margin:13px 0 14px}.dsh-evolith-buff{display:inline-flex;align-items:center;gap:9px;box-sizing:border-box;padding:7px 12px 7px 7px;border:1px solid;border-radius:10px;font-size:13px;font-weight:700;line-height:1.25;box-shadow:inset 0 1px 0 #ffffffb3,0 2px 7px #182b4410}.dsh-evolith-buff-icon{display:grid;place-items:center;width:33px;height:33px;flex:none;border-radius:8px;border:1px solid #ffffff80;box-shadow:inset 0 1px 1px #ffffff80,0 2px 4px #0002;color:white}.dsh-evolith-buff small{display:block;font-size:9px;line-height:1.1;letter-spacing:1.2px;margin-top:3px;font-weight:600;opacity:.72}.dsh-evolith-buff--avoid{color:#164ea3;border-color:#a9c9f8;background:linear-gradient(135deg,#edf5ff,#dceaff)}.dsh-evolith-buff--avoid .dsh-evolith-buff-icon{background:linear-gradient(145deg,#63a2ff,#2862cc)}.dsh-evolith-buff--save{color:#874b0b;border-color:#edc57a;background:linear-gradient(135deg,#fff8e5,#ffebbd)}.dsh-evolith-buff--save .dsh-evolith-buff-icon{background:linear-gradient(145deg,#ffc34b,#df8918)}
 @media(prefers-reduced-motion:reduce){.dsh-evolith-track,.dsh-evolith-thumb{transition:none}}
 `;
   const verificationKind='evolith-verified-memory', verificationTab='dsh-memory-bridge-profile.verified-memory';
@@ -69,6 +70,23 @@ window.__ModuleLoader__.load({ id: "dsh-memory-bridge-profile", factory: (requir
       else if(change?.kind==='replace'||change?.kind==='prepend'){currentTurn=0;turnOpen=false;for(const entry of source.getSnapshot().entries||[])observe(entry.event,false);}
     });
   }
+  function memoryBenefits(record){
+    const text=String(record.usage_summary||record.application||'');
+    const negated=(start)=>/(?:没有|并未|未能|没能|无法|不能|未|不曾|并没有|not|never|didn't|doesn't)\s*(?:实际|真正|有效|成功)?\s*$/i.test(text.slice(Math.max(0,start-20),start));
+    const matches=(pattern)=>[...text.matchAll(pattern)].some(m=>!negated(m.index));
+    return {
+      avoid:matches(/(?:避免|规避|防止|防范|纠正|阻止)[^。；;!?！？\n]{0,75}(?:错误|出错|误答|误用|误判|误把|误当|误操作|风险|漏算|漏掉|遗漏|错付|不足|损失|偏差|过期)|(?:avoid(?:ed|s|ing)?|prevent(?:ed|s|ing)?)[^.;!?\n]{0,65}(?:mistake|error|risk|incorrect|wrong)/gi),
+      save:matches(/(?:省去|省下|免去|减少|节省|节约)[^。；;!?！？\n]{0,30}(?:查询|检索|搜索|查找|查阅|读取|工具调用)|(?:无需|不必|不用|不需要)(?:再|再次)[^。；;!?！？\n]{0,15}(?:查询|检索|搜索|查阅|读取|调用)|(?:saved?|skip(?:ped)?|eliminat(?:e|ed))[^.;!?\n]{0,35}(?:lookup|quer(?:y|ies)|search|tool calls?|file reads?)/gi)
+    };
+  }
+  function benefitBadge(kind){
+    const avoid=kind==='avoid',label=avoid?'避免问题':'节省调用';
+    return h('span',{className:'dsh-evolith-buff dsh-evolith-buff--'+kind,role:'img','aria-label':label+' BUFF',title:'根据助手的用途说明标注，不代表独立验证或实际调用次数测量'},
+      h('span',{className:'dsh-evolith-buff-icon','aria-hidden':true},h('svg',{width:23,height:23,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:1.8,strokeLinecap:'round',strokeLinejoin:'round'},
+        avoid?h('path',{d:'M12 2.5 20 6v5.5c0 4.4-3.7 7.8-8 10-4.3-2.2-8-5.6-8-10V6Z'}):h('path',{d:'m14 2-9 12h6l-1 8 9-12h-6Z',fill:'currentColor',stroke:'none'}),
+        avoid?h('path',{d:'m8.2 11.5 2.6 2.6 5-5'}):null)),
+      h('span',null,label,h('small',null,avoid?'GUARD BUFF':'EFFICIENCY BUFF')));
+  }
   function memoryCardCopy(record){
     const original=(record.memory_text||'').trim();
     const feedbackMissing=/No evaluator feedback supplied/i.test(original);
@@ -100,8 +118,9 @@ window.__ModuleLoader__.load({ id: "dsh-memory-bridge-profile", factory: (requir
       error?h('p',{role:'alert',className:'dsh-evolith-verified-error'},'读取失败：'+error):null,
       loading?h('p',{role:'status',className:'dsh-evolith-verified-muted'},'正在读取…'):null,
       !loading&&!error&&!records.length?h('div',{className:'dsh-evolith-verified-empty'},h('strong',null,'暂时没有记忆使用记录'),h('p',null,'助手使用记忆规避了可能的错误或省去了重复查询后，会记录在这里。')):null,
-      ...records.slice().reverse().map(record=>{const copy=memoryCardCopy(record);return h('article',{key:record.id,className:'dsh-evolith-verified-card'},
+      ...records.slice().reverse().map(record=>{const copy=memoryCardCopy(record),benefits=memoryBenefits(record);return h('article',{key:record.id,className:'dsh-evolith-verified-card'},
         h('div',{className:'dsh-evolith-verified-status'},h('span',{'aria-hidden':true},'✓'),h('span',null,record.usage_source==='actor_reported_use'?'已使用':'已使用 · 已核实'),h('span',{className:'dsh-evolith-verified-round'},'第'+(record.used_turn??record.verified_turn)+'轮')),
+        (benefits.avoid||benefits.save)?h('div',{className:'dsh-evolith-buffs'},benefits.avoid?benefitBadge('avoid'):null,benefits.save?benefitBadge('save'):null):null,
         h('div',{className:'dsh-evolith-verified-eyebrow'},'记忆内容'),
         h('h3',{className:'dsh-evolith-verified-title'},copy.title),
         h('div',{className:'dsh-evolith-verified-summary'},h('strong',null,'本次用途'),h('p',null,copy.usage)),
