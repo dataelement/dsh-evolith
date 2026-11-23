@@ -78,7 +78,7 @@ function installEvolithBridge(ctx, config = {}, deps = {}) {
   async function request(path, body, id) {
     await ready;
     if (id && !await consent.enabled(id)) throw new Error("Evolith已关闭，未发送数据");
-    if (!connection.apiToken) throw new Error("请先在记忆设置中填写访问密钥");
+    if (!connection.apiToken.trim()) throw new Error("未填写 Evolith 记忆访问密钥。请前往「设置 → 记忆」，填写访问密钥并保存，再点击「检查连接」后重试。这不是聊天模型的 API 密钥。");
     const controller = new AbortController();
     if (id) {
       if (!active.has(id)) active.set(id, /* @__PURE__ */ new Set());
@@ -91,6 +91,7 @@ function installEvolithBridge(ctx, config = {}, deps = {}) {
         ...body ? { body: JSON.stringify(body) } : {},
         signal: AbortSignal.any([AbortSignal.timeout(6e5), controller.signal])
       });
+      if (response.status === 401) throw new Error("Evolith 记忆访问密钥无效或已过期。请前往「设置 → 记忆」，更新访问密钥并保存，再点击「检查连接」后重试。这不是聊天模型的 API 密钥。");
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail || data.error || "Memory HTTP " + response.status);
       return data;

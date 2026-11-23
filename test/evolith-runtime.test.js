@@ -14,7 +14,7 @@ async function fixture(fetchImpl, options = {}) {
     };
   } } }), tokenMeter: { measure: () => ({ totalTokens: 0, nodes: [] }) } };
   const consent = new EvolithConsent();
-  const runtime = installEvolithBridge(ctx, {}, { consent, fetchImpl, ...options, store: { loadConfig: async () => ({ serverUrl: "http://fixture.invalid", apiToken: "fixture-key" }) } });
+  const runtime = installEvolithBridge(ctx, {}, { consent, fetchImpl, ...options, store: { loadConfig: async () => ({ serverUrl: "http://fixture.invalid", apiToken: options.apiToken ?? "fixture-key" }) } });
   await runtime.ready;
   const session = { id: "session-one", snapshotEvents: () => [], surface: { nodes: [] }, ownEvents: () => [] };
   const message = { source: { kind: "user" }, content: [{ type: "text", text: "User request" }] };
@@ -161,4 +161,24 @@ test('restart restores a failed exposure before the next prepare, with a private
     assert.deepEqual(calls,['expose','prepare']);
     assert.equal(JSON.parse(await readFile(file,'utf8')).queues[0][1].length,0);
   } finally {await rm(root,{recursive:true,force:true});}
+});
+
+for (const apiToken of ['', '   ']) test('missing memory key guides user to Memory settings: '+JSON.stringify(apiToken), async () => {
+  let called=false;
+  const f=await fixture(async()=>{called=true;throw Error('No request expected')},{apiToken});
+  await assert.rejects(f.runtime.request('account'), /未填写 Evolith 记忆访问密钥.*设置 → 记忆.*检查连接.*不是聊天模型/);
+  assert.equal(called,false);
+});
+for (const path of ['account','prepare','complete','exposures']) test('memory 401 is actionable even for non-JSON response: '+path,async()=>{
+  const f=await fixture(async()=>({ok:false,status:401,json:async()=>{throw Error('HTML response')}}));
+  await assert.rejects(f.runtime.request(path), /Evolith 记忆访问密钥无效或已过期.*设置 → 记忆.*检查连接.*不是聊天模型/);
+});
+test('memory authentication error propagates into native turn failure',async()=>{
+  const f=await fixture(async()=>({ok:false,status:401,json:async()=>({detail:'API key is invalid'})}));
+  await f.consent.set(f.session.id,true);
+  await assert.rejects(f.hooks['agent/pre-step']({agent:{session:f.session},turn:1,step:1},async()=>f.decision), /Evolith 记忆访问密钥无效或已过期.*设置 → 记忆/);
+});
+test('other Memory errors are not mislabeled as an invalid key',async()=>{
+  const f=await fixture(async()=>({ok:false,status:500,json:async()=>({detail:'writer unavailable'})}));
+  await assert.rejects(f.runtime.request('account'),/^Error: writer unavailable$/);
 });
