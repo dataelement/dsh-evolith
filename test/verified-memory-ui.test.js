@@ -15,7 +15,7 @@ async function viewFixture(records=[]){
  return {tabs,panel,calls,nodes,text,render:()=>{cursor=0;return panel.component({sessionId:'session-current'})}};
 }
 test('verified-memory list uses the native right-sidebar tab instead of a new workbench',async()=>{
- const f=await viewFixture();assert.equal(f.tabs[0].kind,'evolith-verified-memory');assert.equal(f.panel.opts.key,f.tabs[0].id);const tree=f.render();assert.match(f.text(tree),/暂时没有已验证记忆/);assert.equal(f.calls.length,0);
+ const f=await viewFixture();assert.equal(f.tabs[0].kind,'evolith-verified-memory');assert.equal(f.panel.opts.key,f.tabs[0].id);const tree=f.render();assert.match(f.text(tree),/暂时没有记忆使用记录/);assert.equal(f.calls.length,0);
 });
 test('verified-memory card shows original claim, application, evidence and actor attribution',async()=>{
  const f=await viewFixture([{id:'record',memory_id:'policy-1',title:'转账手续费已核对',usage_summary:'这条记忆帮助核算了本次转账金额。',verification_summary:'对照最新报价确认费用为4.50美元。',memory_text:'Bank transfer fee is USD 4.50.',memory_version:'abc123',application:'Applied the transfer fee.',verification_reason:'The live quote confirms the same amount.',verified_turn:5,evidence:{source_kind:'tool_result',source_turn:5,tool_name:'get_quote',quote:'processing_fee USD 4.50'}}]);
@@ -45,7 +45,7 @@ async function popupFixture(initial=[]){
 }
 const start=(turn,seq)=>({type:'turn/start',seq,data:{turn}});
 const call=(turn,seq,id,name='evolith_record_verified_memory')=>({type:'assistant/message',seq,data:{turn,message:{content:[{type:'tool-call',id,name}]}}});
-const result=(turn,seq,id,overrides={})=>({type:'tool/result',seq,data:{turn,message:{toolCallId:id,isError:false,content:[{type:'text',text:JSON.stringify({recorded:true,status:'actor_verified_with_evidence',record_id:'record',memory_id:'m'})}],...overrides}}});
+const result=(turn,seq,id,overrides={})=>({type:'tool/result',seq,data:{turn,message:{toolCallId:id,isError:false,content:[{type:'text',text:JSON.stringify({recorded:true,status:'actor_reported_use',record_id:'record',memory_id:'m'})}],...overrides}}});
 test('loading an enabled session and its old tool results does not auto-open the panel',async()=>{
  const f=await popupFixture([start(1,1),call(1,2,'old'),result(1,3,'old'),{type:'turn/end',seq:4,data:{turn:1}}]);await new Promise(r=>setImmediate(r));assert.equal(f.opened.length,0);f.cleanup();
 });
@@ -58,7 +58,7 @@ test('failures, unrelated tools, historical replay and unmounted sessions never 
  f.cleanup();f.emit(call(1,8,'after-unmount'));f.emit(result(1,9,'after-unmount'));assert.equal(f.opened.length,0);
 });
 test('manual viewing still opens the panel without any new tool call',async()=>{
- const f=await popupFixture();const button=f.nodes(f.tree).find(n=>n.props['aria-label']==='查看已验证记忆');button.props.onClick();assert.equal(f.opened.length,1);f.cleanup();
+ const f=await popupFixture();const button=f.nodes(f.tree).find(n=>n.props['aria-label']==='查看记忆使用记录');button.props.onClick();assert.equal(f.opened.length,1);f.cleanup();
 });
 
 
@@ -69,4 +69,9 @@ test('legacy unfinished-task memory shows its actual claim rather than a verific
 test('unknown legacy memories use the saved claim and do not invent use or proof summaries',async()=>{
  const f=await viewFixture([{id:'legacy',memory_text:'Transfer limit is USD 200.',verified_turn:7,evidence:{source_kind:'tool_result'}}]);
  const tree=f.render();assert.equal(f.text(f.nodes(tree).find(n=>n.type==='h3')),'Transfer limit is USD 200.');assert.ok(!f.text(tree).includes('本次处理引用了这条记忆中的信息'));assert.ok(!f.text(tree).includes('已对照本对话中的实际结果核实'));
+});
+
+test('three-field usage records show benefit and resolved memory without claiming verification',async()=>{
+ const f=await viewFixture([{id:'usage',memory_id:'m1',title:'先确认收款方',usage_summary:'根据记忆检查收款方，规避向旧收款方付款的风险。',memory_text:'Confirm the current payee before payment.',used_turn:4,usage_source:'actor_reported_use'}]);
+ const text=f.text(f.render());assert.match(text,/规避向旧收款方付款/);assert.match(text,/Confirm the current payee/);assert.match(text,/第4轮/);assert.ok(!text.includes('已使用 · 已核实'));assert.ok(!text.includes('证据原文'));
 });

@@ -28,7 +28,7 @@ function installEvolithBridge(ctx, config = {}, deps = {}) {
     if(current){current.dispose();verificationTools.delete(id);}
     if(!enabled)return;
     const tools=agent.ctx?.get?.('tools'),prompt=agent.ctx?.get?.('systemPrompt');
-    if(!tools?.register||!prompt?.section)throw Error('当前DSH缺少会话工具或提示词服务，无法启用记忆验证工具');
+    if(!tools?.register||!prompt?.section)throw Error('当前DSH缺少会话工具或提示词服务，无法启用记忆使用记录工具');
     const unregister=tools.register(verifiedMemoryTool({agent,consent,store:verificationStore,owner:()=>consent.owner()}));
     let removeInstruction;
     try{removeInstruction=prompt.section({name:'evolith:verified-memory-policy',order:900,text:VERIFIED_MEMORY_INSTRUCTION})}catch(e){unregister();throw e}
@@ -201,7 +201,7 @@ function installEvolithBridge(ctx, config = {}, deps = {}) {
       if (path === "manager/verified-memory" && req.method === "GET") {
         const id=url.searchParams.get('session_id');
         if(typeof id!=='string'||!id||id.length>256)return sendJson(res,400,{error:'Invalid session ID'});
-        return sendJson(res,200,{enabled:await consent.enabled(id),records:await verificationStore.list(consent.owner(),id),verification_source:'actor_with_observed_evidence'});
+        return sendJson(res,200,{enabled:await consent.enabled(id),records:await verificationStore.list(consent.owner(),id),usage_source:'actor_reported_use'});
       }
       if (path === "status" && req.method === "GET") return sendJson(res, 200, { server: { url: connection.serverUrl, token_configured: !!connection.apiToken }, errors: logs });
       if (path === "manager/registry" && req.method === "PUT") {

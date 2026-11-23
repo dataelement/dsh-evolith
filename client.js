@@ -58,7 +58,7 @@ window.__ModuleLoader__.load({ id: "dsh-memory-bridge-profile", factory: (requir
       if(calls.get(message?.toolCallId||message?.source?.callId)!=='evolith_record_verified_memory')return;
       try{
         const result=JSON.parse((message.content||[]).filter(b=>b.type==='text').map(b=>b.text).join(''));
-        if(result.recorded===true&&result.status==='actor_verified_with_evidence'&&typeof result.record_id==='string')onVerified(currentTurn);
+        if(result.recorded===true&&['actor_reported_use','actor_verified_with_evidence'].includes(result.status)&&typeof result.record_id==='string')onVerified(currentTurn);
       }catch{}
     };
     for(const entry of source.getSnapshot().entries||[])observe(entry.event,false);
@@ -93,21 +93,21 @@ window.__ModuleLoader__.load({ id: "dsh-memory-bridge-profile", factory: (requir
       load();const timer=setInterval(load,2000);return()=>{live=false;clearInterval(timer)};
     },[sessionId]);
     const records=data.records||[];
-    return h('section',{className:'dsh-evolith-verified-panel','aria-label':'当前对话已验证记忆'},
+    return h('section',{className:'dsh-evolith-verified-panel','aria-label':'当前对话使用的记忆'},
       h('div',{className:'dsh-evolith-verified-heading'},h('div',null,h('h2',null,'本次用到的记忆'),h('span',{className:'dsh-evolith-verified-muted'},'当前对话 · '+records.length+'条记录')),h('button',{type:'button',className:'dsh-evolith-verified-refresh',onClick:refresh},'刷新')),
-      h('p',{className:'dsh-evolith-verified-explanation'},'这里只展示助手实际用过、并核实过的记忆。'),
-      data.enabled===false?h('p',{className:'dsh-evolith-verified-muted'},'本会话已关闭 Evolith，保留此前的验证记录。'):null,
+      h('p',{className:'dsh-evolith-verified-explanation'},'这里展示助手报告实际用到的记忆，以及它帮助规避的错误或省去的重复查询。'),
+      data.enabled===false?h('p',{className:'dsh-evolith-verified-muted'},'本会话已关闭 Evolith，保留此前的使用记录。'):null,
       error?h('p',{role:'alert',className:'dsh-evolith-verified-error'},'读取失败：'+error):null,
       loading?h('p',{role:'status',className:'dsh-evolith-verified-muted'},'正在读取…'):null,
-      !loading&&!error&&!records.length?h('div',{className:'dsh-evolith-verified-empty'},h('strong',null,'暂时没有已验证记忆'),h('p',null,'助手确认某条记忆有用且正确后，会自动记录在这里。')):null,
+      !loading&&!error&&!records.length?h('div',{className:'dsh-evolith-verified-empty'},h('strong',null,'暂时没有记忆使用记录'),h('p',null,'助手使用记忆规避了可能的错误或省去了重复查询后，会记录在这里。')):null,
       ...records.slice().reverse().map(record=>{const copy=memoryCardCopy(record);return h('article',{key:record.id,className:'dsh-evolith-verified-card'},
-        h('div',{className:'dsh-evolith-verified-status'},h('span',{'aria-hidden':true},'✓'),h('span',null,'已使用 · 已核实'),h('span',{className:'dsh-evolith-verified-round'},'第'+record.verified_turn+'轮')),
+        h('div',{className:'dsh-evolith-verified-status'},h('span',{'aria-hidden':true},'✓'),h('span',null,record.usage_source==='actor_reported_use'?'已使用':'已使用 · 已核实'),h('span',{className:'dsh-evolith-verified-round'},'第'+(record.used_turn??record.verified_turn)+'轮')),
         h('div',{className:'dsh-evolith-verified-eyebrow'},'记忆内容'),
         h('h3',{className:'dsh-evolith-verified-title'},copy.title),
         h('div',{className:'dsh-evolith-verified-summary'},h('strong',null,'本次用途'),h('p',null,copy.usage)),
-        h('details',{className:'dsh-evolith-verified-details'},h('summary',null,'查看原文与证据'),
-          h('dl',null,h('dt',null,'记忆原文'),h('dd',null,record.memory_text),h('dt',null,'使用详情'),h('dd',null,record.application),h('dt',null,'核实说明'),h('dd',null,record.verification_reason),h('dt',null,'证据原文'),h('dd',null,h('pre',null,record.evidence?.quote),h('span',{className:'dsh-evolith-verified-muted'},'第'+record.evidence?.source_turn+'轮 · '+(record.evidence?.tool_name||'用户消息'))),h('dt',null,'记忆编号与来源'),h('dd',null,h('code',null,record.memory_id),h('p',null,record.provenance||'来源未标注'),h('code',null,record.memory_version?.slice(0,12))))));}),
-      records.length?h('p',{className:'dsh-evolith-verified-muted'},'核实结论由助手根据所列依据作出。'):null);
+        h('details',{className:'dsh-evolith-verified-details'},h('summary',null,record.usage_source==='actor_reported_use'?'查看记忆原文与来源':'查看原文与证据'),
+          h('dl',null,h('dt',null,'记忆原文'),h('dd',null,record.memory_text),record.application?h('dt',null,'使用详情'):null,record.application?h('dd',null,record.application):null,record.verification_reason?h('dt',null,'核实说明'):null,record.verification_reason?h('dd',null,record.verification_reason):null,record.evidence?h('dt',null,'证据原文'):null,record.evidence?h('dd',null,h('pre',null,record.evidence.quote),h('span',{className:'dsh-evolith-verified-muted'},'第'+record.evidence.source_turn+'轮 · '+(record.evidence.tool_name||'用户消息'))):null,h('dt',null,'记忆编号与来源'),h('dd',null,h('code',null,record.memory_id),h('p',null,record.provenance||'来源未标注'),h('code',null,record.memory_version?.slice(0,12))))));}),
+      records.length?h('p',{className:'dsh-evolith-verified-muted'},'使用价值由助手说明，不代表独立验证或正确率评分。'):null);
   }
   function Toggle({ sessionId } = {}) {
     const [enabled, setEnabled] = React.useState(true);
@@ -203,7 +203,7 @@ window.__ModuleLoader__.load({ id: "dsh-memory-bridge-profile", factory: (requir
           h("circle", { cx: 10, cy: 10, r: 7.6 }),
           h("path", { d: "M7.8 7.6a2.3 2.3 0 0 1 4.5.7c0 1.6-2.3 1.9-2.3 3.3" }),
           h("circle", { cx: 10, cy: 14.2, r: .65, fill: "currentColor", stroke: "none" }))),
-      enabled ? h('button',{type:'button',className:'dsh-evolith-help','aria-label':'查看已验证记忆',title:'查看本对话已使用并验证的记忆',onClick:()=>openVerifications(sessionId)},
+      enabled ? h('button',{type:'button',className:'dsh-evolith-help','aria-label':'查看记忆使用记录',title:'查看本对话使用记忆带来的帮助',onClick:()=>openVerifications(sessionId)},
         h('svg',{width:17,height:17,viewBox:'0 0 20 20',fill:'none',stroke:'currentColor',strokeWidth:1.5,'aria-hidden':true},h('path',{d:'M10 2.4 16 5v4.4c0 3.6-2.6 5.9-6 8.2-3.4-2.3-6-4.6-6-8.2V5Z'}),h('path',{d:'m6.7 9.5 2.1 2.1 4.4-4.4'}))) : null,
       error ? h("span", { role: "alert", title: error, style: { color: "#b42318", fontSize: 12 } }, "设置失败") : null,
       tooltip);
@@ -258,7 +258,7 @@ window.__ModuleLoader__.load({ id: "dsh-memory-bridge-profile", factory: (requir
   function apply(ctx) {
     hostContext = ctx;
     ctx.inject?.(['sidebarRightTabs','sidebarRight'], scoped=>{
-      scoped.effect(()=>scoped.sidebarRightTabs.register({id:verificationTab,kind:verificationKind,title:()=> '已验证记忆',guide:[{id:'verified-memory',order:55,title:()=> '已验证记忆',description:()=> '查看当前对话实际使用的记忆与验证依据'}]}));
+      scoped.effect(()=>scoped.sidebarRightTabs.register({id:verificationTab,kind:verificationKind,title:()=> '记忆使用记录',guide:[{id:'verified-memory',order:55,title:()=> '记忆使用记录',description:()=> '查看当前对话用到的记忆及具体帮助'}]}));
       scoped.slots.inject('sidebar.right.pane.tab',()=>scoped.slots.register({name:'sidebar.right.pane.tab',key:verificationTab},VerifiedMemories));
     });
     ctx.effect(() => {
