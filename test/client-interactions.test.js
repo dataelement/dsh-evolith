@@ -5,7 +5,7 @@ import { runInNewContext } from 'node:vm'
 
 // Execute the shipped client and its actual button handlers with a small hook
 // host. HTTP responses and optional DSH services are the only substitutes.
-async function fixture({ services = {}, local = [], remote = [] } = {}) {
+async function fixture({ services = {}, local = [], remote = [], tokenConfigured = true } = {}) {
   let definition, component, cursor = 0
   const cells = [], calls = [], opened = []
   const react = {
@@ -20,7 +20,7 @@ async function fixture({ services = {}, local = [], remote = [] } = {}) {
     document: { querySelector: () => null, createElement: () => ({ dataset: {}, remove() {} }), head: { appendChild() {} } },
     fetch: async (url, options = {}) => {
       calls.push({ url, options })
-      const value = url.endsWith('/status') ? { server: { url: 'http://memory.invalid:28192', token_configured: true }, sessions: local }
+      const value = url.endsWith('/status') ? { server: { url: 'http://memory.invalid:28192', token_configured: tokenConfigured }, sessions: local }
         : url.endsWith('/catalog') ? data : url.includes('/processing') ? { jobs: remote }
         : url.endsWith('/groups') ? { groups: [{ group_id: 'g', name: '组名' }] } : {}
       return { ok: true, json: async () => value }
@@ -65,6 +65,10 @@ test('a browser service error is visible and the external alternative stays avai
 
 test('the shipped save handler marks mutations and leaves the stored key untouched when empty', async () => {
   const f = await fixture()
+  const password = f.nodes(f.render()).find(n => n.type === 'input' && n.props.type === 'password')
+  assert.equal(password.props.placeholder, '****')
+  assert.equal(password.props.value, '')
+  assert.match(f.text(f.render()), /已保存/)
   const input = f.nodes(f.render()).find(n => n.type === 'input' && n.props.type === 'url')
   input.props.onChange({ target: { value: 'http://memory.invalid:9000' } })
   await f.button(f.render(), '保存连接配置').props.onClick()
@@ -84,4 +88,12 @@ test('settings keeps connection and collapsed local errors without legacy panels
   assert.ok(detail)
   assert.ok(!detail.props.open)
   assert.ok(!f.calls.some(c => /processing|catalog|groups/.test(c.url)))
+})
+
+test('an unconfigured memory key has an explicit empty prompt', async () => {
+  const f = await fixture({tokenConfigured:false})
+  const input = f.nodes(f.render()).find(n => n.type === 'input' && n.props.type === 'password')
+  assert.equal(input.props.placeholder, '请输入访问密钥')
+  assert.equal(input.props.value, '')
+  assert.doesNotMatch(f.text(f.render()), /已保存/)
 })
