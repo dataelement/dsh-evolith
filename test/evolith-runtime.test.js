@@ -69,7 +69,7 @@ test("new sessions default on independently of another session choice", async ()
   await store.set("a", true);
   assert.equal(await store.enabled("a"), true);
   assert.equal(await store.enabled("b"), true);
-  await assert.rejects(store.set("a", false), /本会话开启，无法关闭/);
+  await store.set("a", false);
   await store.resetForConnection("a");
   assert.equal(await store.enabled("a"), false);
   assert.equal(await store.enabled("b"), true);
@@ -199,18 +199,15 @@ test('default-on does not override saved choices or cross account ownership',asy
  assert.equal(await store.enabled(''),false);
 });
 
-test('default-on and explicitly enabled sessions reject closing without losing persisted state',async()=>{
+test('default-on sessions may close, persist their choice, and reopen',async()=>{
  const {mkdtemp,rm}=await import('node:fs/promises');const {tmpdir}=await import('node:os');
- const dir=await mkdtemp(join(tmpdir(),'evolith-lock-'));
+ const dir=await mkdtemp(join(tmpdir(),'evolith-toggle-'));
  try{
-  const store=new EvolithConsent(join(dir,'consent.json'));store.owner=()=> 'account';
-  await assert.rejects(store.set('new',false), /本会话开启，无法关闭/);
-  await store.set('saved',true);
-  const closing=store.set('saved',false),opening=store.set('saved',true);
-  await assert.rejects(closing,/本会话开启，无法关闭/);await opening;
-  const reopened=new EvolithConsent(join(dir,'consent.json'));reopened.owner=()=> 'account';
-  assert.equal(await reopened.enabled('saved'),true);
-  await assert.rejects(reopened.set('saved',false),/本会话开启，无法关闭/);
+  const filename=join(dir,'consent.json');const store=new EvolithConsent(filename);store.owner=()=> 'account';
+  assert.equal(await store.enabled('saved'),true);await store.set('saved',false);
+  const reopened=new EvolithConsent(filename);reopened.owner=()=> 'account';
+  assert.equal(await reopened.enabled('saved'),false);
+  await reopened.set('saved',true);assert.equal(await reopened.enabled('saved'),true);
  }finally{await rm(dir,{recursive:true,force:true})}
 });
 
@@ -221,4 +218,20 @@ test('default activation is persisted under its account and never overwrites a q
  store.owner=()=> 'second';assert.equal(await store.enabled('default'),false);
  const resetting=store.resetForConnection('race'),reading=store.enabled('race');
  await resetting;assert.equal(await reading,false);
+});
+
+test('closing during a pending read cancels memory work without a turn error',async()=>{
+ let start;const started=new Promise(r=>start=r);
+ const f=await fixture(async(_url,options)=>{start();await new Promise((_,reject)=>options.signal.addEventListener('abort',()=>reject(new DOMException('aborted','AbortError')),{once:true}));});
+ await f.consent.set(f.session.id,true);
+ const work=f.hooks['agent/pre-step']({agent:{session:f.session},turn:1,step:1},async()=>f.decision);
+ await started;
+ const route=f.routes[0];
+ const body=JSON.stringify({enabled:false});
+ const {Readable}=await import('node:stream');const req=Readable.from([Buffer.from(body)]);
+ req.url='/dsh-memory-bridge/manager/evolith?session_id='+f.session.id;req.method='PUT';
+ req.headers={host:'127.0.0.1','x-dsh-memory-request':'1'};req.socket={remoteAddress:'127.0.0.1'};
+ const res={writeHead(){},end(){}};
+ await route.handler(req,res);
+ assert.equal(await work,f.decision);assert.equal(f.runtime.logs.length,0);
 });

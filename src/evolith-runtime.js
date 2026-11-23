@@ -8,6 +8,7 @@ import { sessionEvents } from "./session-events.js";
 import { messageText } from "./episode.js";
 import { replacePrefix, constrainCompaction } from "./evolith-window.js";
 import { VerifiedMemoryStore, verifiedMemoryTool, VERIFIED_MEMORY_INSTRUCTION } from "./verified-memory.js";
+const disabledError = () => Object.assign(new Error("Evolith已关闭，未发送数据"), { code: "EVOLITH_DISABLED" });
 function installEvolithBridge(ctx, config = {}, deps = {}) {
   const store = deps.store || new GroupConfigStore();
   const consent = deps.consent || new EvolithConsent(process.env.DSH_HOME ? join(process.env.DSH_HOME, "evolith-consent.json") : void 0);
@@ -72,12 +73,13 @@ function installEvolithBridge(ctx, config = {}, deps = {}) {
     return op;
   }
   function error(e) {
+    if (e?.code === "EVOLITH_DISABLED") return;
     logs.push({ at: (/* @__PURE__ */ new Date()).toISOString(), message: String(e?.message || e).replaceAll(connection.apiToken || "\0", "[REDACTED]") });
     if (logs.length > 200) logs.shift();
   }
   async function request(path, body, id) {
     await ready;
-    if (id && !await consent.enabled(id)) throw new Error("Evolith已关闭，未发送数据");
+    if (id && !await consent.enabled(id)) throw disabledError();
     if (!connection.apiToken.trim()) throw new Error("未填写 Evolith 记忆访问密钥。请前往「设置 → 记忆」，填写访问密钥并保存，再点击「检查连接」后重试。这不是聊天模型的 API 密钥。");
     const controller = new AbortController();
     if (id) {
@@ -95,6 +97,9 @@ function installEvolithBridge(ctx, config = {}, deps = {}) {
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail || data.error || "Memory HTTP " + response.status);
       return data;
+    } catch (e) {
+      if (id && controller.signal.aborted && !await consent.enabled(id)) throw disabledError();
+      throw e;
     } finally {
       if (id) active.get(id)?.delete(controller);
     }
@@ -168,6 +173,7 @@ function installEvolithBridge(ctx, config = {}, deps = {}) {
         content: [{ type: "text", text: state.memory_delta.message_text }]
       }] } : decision;
     } catch (e) {
+      if (e?.code === "EVOLITH_DISABLED") return decision;
       error(e);
       throw e;
     }

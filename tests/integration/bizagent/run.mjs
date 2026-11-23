@@ -40,7 +40,7 @@ const errors=[];
 function deadline(work,ms,label){let timer;return Promise.race([work,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error(label+' timed out')),ms)})]).finally(()=>clearTimeout(timer));}
 async function until(check,label){await deadline((async()=>{while(!await check())await new Promise(r=>setTimeout(r,5))})(),3000,label);}
 
-async function runReplay({name,enabled=true,rs=rounds,memoryFailure=false,slowComplete=false,verificationProbe=false,enableAtTurn=1}) {
+async function runReplay({name,enabled=true,rs=rounds,memoryFailure=false,slowComplete=false,verificationProbe=false,enableAtTurn=1,disableAtTurn=0,reenableAtTurn=0}) {
   const ctx=new Context(),temp=await mkdtemp(join(tmpdir(),'bizagent-dsh-'));
   const stats={name,enabled,rounds:0,model_calls:0,tool_calls:0,prepare_turns:[],memory_insertions:[],evictions:[],round_checks:[],status_events:[],background_complete_blocked:false,stable_prefix_checks:0,native_boundary_checks:0};
   let previousRequest,previousSegment;
@@ -156,6 +156,9 @@ async function runReplay({name,enabled=true,rs=rounds,memoryFailure=false,slowCo
 
     for(const [i,r] of rs.entries()){
       turn=i+1;step=0;
+      if(turn===disableAtTurn||turn===reenableAtTurn){
+        enabled=turn===reenableAtTurn;await consent.set(handle.agent.session.id,enabled);await runtime.syncVerificationTools(handle.agent);previousRequest=null;
+      }
       if(enableAtTurn>1&&turn===enableAtTurn){
         enabled=true;await consent.set(handle.agent.session.id,true);await runtime.syncVerificationTools(handle.agent);
         previousRequest=null;
@@ -213,7 +216,7 @@ async function runReplay({name,enabled=true,rs=rounds,memoryFailure=false,slowCo
     }
     if(!enabled){assert.equal(calls.length,0,'Disabled mode contacted memory service');}
     if(!memoryFailure){assert.equal(stats.model_calls,countSteps(rs));assert.equal(stats.tool_calls,countTools(rs));}
-    if(verificationProbe){const saved=await verificationStore.list(consent.owner(),handle.agent.session.id);assert.equal(saved.length,1);assert.equal(saved[0].memory_id,'regression-confirmed-fact');assert.equal(saved[0].evidence.tool_name,'search_knowledge');stats.verified_records=saved.length;await assert.rejects(consent.set(handle.agent.session.id,false),/本会话开启，无法关闭/);await consent.resetForConnection(handle.agent.session.id);await runtime.syncVerificationTools(handle.agent);assert.ok(!handle.agent.ctx.get('tools').schemas().some(t=>t.name===VERIFIED_MEMORY_TOOL),'Tool still exposed after opt-out');}
+    if(verificationProbe){const saved=await verificationStore.list(consent.owner(),handle.agent.session.id);assert.equal(saved.length,1);assert.equal(saved[0].memory_id,'regression-confirmed-fact');assert.equal(saved[0].evidence.tool_name,'search_knowledge');stats.verified_records=saved.length;await consent.set(handle.agent.session.id,false);await runtime.syncVerificationTools(handle.agent);assert.ok(!handle.agent.ctx.get('tools').schemas().some(t=>t.name===VERIFIED_MEMORY_TOOL),'Tool still exposed after opt-out');}
     stats.prune_events=handle.agent.session.snapshotEvents().filter(e=>e.type==='compaction/prune').length;
     stats.api_calls=calls.map(c=>({path:c.path,turn:c.turn}));
     return stats;
@@ -230,6 +233,12 @@ for(const enableAtTurn of [2,6])await check(`enable_on_turn_${enableAtTurn}_read
   assert.deepEqual(s.prepare_turns,Array.from({length:47-enableAtTurn},(_,i)=>i+enableAtTurn));
   assert.ok(s.memory_insertions.includes(enableAtTurn),'Late activation did not deliver memory to Actor');
   return {prepare_turns:s.prepare_turns,memory_insertions:s.memory_insertions,initial_disabled_turns:enableAtTurn-1,native_rounds:s.rounds,persistence_reopens:s.storage_roundtrip_checks};
+});
+await check('close_on_turn_2_and_reopen_on_turn_3',async()=>{
+ const s=await runReplay({name:'toggle_reopen',rs:rounds,disableAtTurn:2,reenableAtTurn:3});
+ assert.deepEqual(s.prepare_turns,[1,...Array.from({length:44},(_,i)=>i+3)]);
+ assert.ok(s.memory_insertions.includes(5));
+ return {prepare_turns:s.prepare_turns,memory_insertions:s.memory_insertions,native_rounds:s.rounds};
 });
 await check('full_case_memory_off',async()=>{const s=await runReplay({name:'memory_off',enabled:false});return {rounds:s.rounds,model_calls:s.model_calls,tool_calls:s.tool_calls}});
 await check('full_case_memory_on',async()=>{const s=await runReplay({name:'memory_on'});assert.ok(s.stable_prefix_checks>90);assert.equal(s.native_boundary_checks,46);assert.equal(s.storage_roundtrip_checks,46);assert.deepEqual(s.memory_insertions,Array.from({length:11},(_,i)=>5+4*i));return {rounds:s.rounds,model_calls:s.model_calls,tool_calls:s.tool_calls,insertions:s.memory_insertions,stable_prefix_checks:s.stable_prefix_checks,native_boundary_checks:s.native_boundary_checks,storage_roundtrip_checks:s.storage_roundtrip_checks}});
