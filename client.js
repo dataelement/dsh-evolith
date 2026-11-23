@@ -35,6 +35,7 @@ window.__ModuleLoader__.load({ id: "dsh-memory-bridge-profile", factory: (requir
 .dsh-evolith-verified-refresh{border:1px solid var(--dsw-alias-border-l1,#e1e6ed);border-radius:7px;background:transparent;color:inherit;font:inherit;padding:3px 9px;cursor:pointer}.dsh-evolith-verified-explanation{color:var(--dsw-alias-label-secondary,#647084);font-size:12px;margin:14px 0 18px}.dsh-evolith-verified-empty{border:1px dashed var(--dsw-alias-border-l1,#e1e6ed);border-radius:10px;padding:18px 14px;margin-top:20px}.dsh-evolith-verified-empty p{font-size:12px;color:var(--dsw-alias-label-secondary,#647084)}
 .dsh-evolith-verified-card{border:1px solid var(--dsw-alias-border-l1,#e1e6ed);border-radius:10px;padding:16px;margin:12px 0;overflow-wrap:anywhere}.dsh-evolith-verified-status{display:flex;align-items:center;gap:6px;color:#168058;font-size:11px;font-weight:500}.dsh-evolith-verified-round{margin-left:auto;color:var(--dsw-alias-label-tertiary,#7b8594);font-weight:400}.dsh-evolith-verified-eyebrow{font-size:11px;color:var(--dsw-alias-label-tertiary,#7b8594);margin-top:12px}.dsh-evolith-verified-title{font-size:15px;line-height:1.6;font-weight:600;margin:3px 0 13px;color:var(--dsw-alias-label-primary,#27364c)}.dsh-evolith-verified-summary{padding:0 0 0 10px;border-left:2px solid var(--dsw-alias-border-l1,#dce5f2)}.dsh-evolith-verified-summary strong{font-size:11px;font-weight:500;color:var(--dsw-alias-label-secondary,#647084)}.dsh-evolith-verified-summary p{margin:4px 0;font-size:13px;line-height:1.65;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}.dsh-evolith-verified-details{margin-top:10px;border-top:1px solid var(--dsw-alias-border-l1,#e1e6ed);padding-top:10px;font-size:12px}.dsh-evolith-verified-details summary{cursor:pointer;color:var(--dsw-alias-label-tertiary,#7b8594)}.dsh-evolith-verified-details pre{white-space:pre-wrap;max-height:180px;overflow:auto;background:var(--dsw-alias-state-business-tertiary,#f0f5fe);padding:9px;border-radius:6px;font-size:11px}.dsh-evolith-verified-card-title{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}.dsh-evolith-verified-card-title strong{font-size:12px;font-weight:600}.dsh-evolith-verified-badge{font-size:11px;background:#e8f6ef;color:#16734c;border-radius:5px;padding:1px 6px;white-space:nowrap}.dsh-evolith-verified-meta{margin-top:5px}.dsh-evolith-verified-card dl{margin:12px 0 0}.dsh-evolith-verified-card dt{font-size:12px;color:var(--dsw-alias-label-secondary,#647084);margin-top:9px}.dsh-evolith-verified-card dd{margin:3px 0 0}.dsh-evolith-verified-card blockquote{margin:5px 0;padding:7px 10px;border-left:2px solid #75a5ef;background:var(--dsw-alias-state-business-tertiary,#f0f5fe);white-space:pre-wrap}.dsh-evolith-verified-original{font-size:12px;margin-top:10px}.dsh-evolith-verified-original summary{cursor:pointer;color:var(--dsw-alias-label-secondary,#647084)}.dsh-evolith-verified-original p{white-space:pre-wrap}.dsh-evolith-verified-error{color:#b42318}
 .dsh-evolith-buffs{display:flex;flex-wrap:wrap;gap:9px;margin:13px 0 14px}.dsh-evolith-buff{display:inline-flex;align-items:center;gap:9px;box-sizing:border-box;padding:7px 12px 7px 7px;border:1px solid;border-radius:10px;font-size:13px;font-weight:700;line-height:1.25;box-shadow:inset 0 1px 0 #ffffffb3,0 2px 7px #182b4410}.dsh-evolith-buff-icon{display:grid;place-items:center;width:33px;height:33px;flex:none;border-radius:8px;border:1px solid #ffffff80;box-shadow:inset 0 1px 1px #ffffff80,0 2px 4px #0002;color:white}.dsh-evolith-buff small{display:block;font-size:9px;line-height:1.1;letter-spacing:1.2px;margin-top:3px;font-weight:600;opacity:.72}.dsh-evolith-buff--avoid{color:#164ea3;border-color:#a9c9f8;background:linear-gradient(135deg,#edf5ff,#dceaff)}.dsh-evolith-buff--avoid .dsh-evolith-buff-icon{background:linear-gradient(145deg,#63a2ff,#2862cc)}.dsh-evolith-buff--save{color:#874b0b;border-color:#edc57a;background:linear-gradient(135deg,#fff8e5,#ffebbd)}.dsh-evolith-buff--save .dsh-evolith-buff-icon{background:linear-gradient(145deg,#ffc34b,#df8918)}
+.dsh-evolith-benefit-trigger{width:auto;min-width:23px;gap:5px}.dsh-evolith-benefit-trigger--active{padding:2px;border-radius:7px}.dsh-evolith-trigger-icon{display:grid;place-items:center;width:26px;height:26px;border-radius:7px;color:#fff;border:1px solid #ffffff80;box-shadow:inset 0 1px 1px #ffffff70,0 1px 5px #20365a22}.dsh-evolith-trigger-icon--avoid{background:linear-gradient(145deg,#63a2ff,#2862cc)}.dsh-evolith-trigger-icon--both{background:linear-gradient(145deg,#6986f6,#4e51b4)}.dsh-evolith-trigger-icon--save{background:linear-gradient(145deg,#ffc34b,#df8918)}
 @media(prefers-reduced-motion:reduce){.dsh-evolith-track,.dsh-evolith-thumb{transition:none}}
 `;
   const verificationKind='evolith-verified-memory', verificationTab='dsh-memory-bridge-profile.verified-memory';
@@ -44,7 +45,7 @@ window.__ModuleLoader__.load({ id: "dsh-memory-bridge-profile", factory: (requir
     side.openTabIn(sessionId,verificationKind,{revealIfOpened:true});
   }
   const openedVerificationTurns=new Set();
-  function watchVerificationResults(source,onVerified){
+  function watchVerificationResults(source,onVerified,onBenefit){
     const calls=new Map(),seen=new Set();let currentTurn=0,turnOpen=false;
     const observe=(event,notify)=>{
       const eventTurn=event.data?.turn;
@@ -55,11 +56,14 @@ window.__ModuleLoader__.load({ id: "dsh-memory-bridge-profile", factory: (requir
       if(event.type==='assistant/message')for(const block of message?.content||[])if(block.type==='tool-call')calls.set(block.id,block.name);
       if(event.type!=='tool/result'||seen.has(event.seq))return;
       seen.add(event.seq);
-      if(!notify||!turnOpen||event.data?.turn!==currentTurn||message?.isError)return;
+      if(message?.isError)return;
       if(calls.get(message?.toolCallId||message?.source?.callId)!=='evolith_record_verified_memory')return;
       try{
         const result=JSON.parse((message.content||[]).filter(b=>b.type==='text').map(b=>b.text).join(''));
-        if(result.recorded===true&&['actor_reported_use','actor_verified_with_evidence'].includes(result.status)&&typeof result.record_id==='string')onVerified(currentTurn);
+        if(result.recorded===true&&['actor_reported_use','actor_verified_with_evidence'].includes(result.status)&&typeof result.record_id==='string'){
+          onBenefit?.(memoryBenefits(result));
+          if(notify&&turnOpen&&event.data?.turn===currentTurn)onVerified(currentTurn);
+        }
       }catch{}
     };
     for(const entry of source.getSnapshot().entries||[])observe(entry.event,false);
@@ -72,6 +76,10 @@ window.__ModuleLoader__.load({ id: "dsh-memory-bridge-profile", factory: (requir
   }
   function memoryBenefits(record){
     return {avoid:record.benefit_type==='avoid_error'||record.benefit_type==='both',save:record.benefit_type==='save_tool_calls'||record.benefit_type==='both'};
+  }
+  function benefitGlyph(kind,size){
+    return h('svg',{width:size,height:size,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:1.8,strokeLinecap:'round',strokeLinejoin:'round','aria-hidden':true},
+      kind!=='save'?h('path',{d:'M12 2.5 20 6v5.5c0 4.4-3.7 7.8-8 10-4.3-2.2-8-5.6-8-10V6Z'}):h('path',{d:'m14 2-9 12h6l-1 8 9-12h-6Z',fill:'currentColor',stroke:'none'}),kind==='avoid'?h('path',{d:'m8.2 11.5 2.6 2.6 5-5'}):kind==='both'?h('path',{d:'m13 6-5 7h4l-1 5 6-8h-4Z',fill:'#ffe39b',stroke:'none'}):null);
   }
   function benefitBadge(kind){
     const avoid=kind==='avoid',label=avoid?'避免问题':'节省调用';
@@ -128,6 +136,8 @@ window.__ModuleLoader__.load({ id: "dsh-memory-bridge-profile", factory: (requir
     const [error, setError] = React.useState("");
     const [open, setOpen] = React.useState(false);
     const [position, setPosition] = React.useState(null);
+    const [benefitState,setBenefitState]=React.useState({sessionId:null,avoid:false,save:false});
+    const benefits=benefitState.sessionId===sessionId?benefitState:{avoid:false,save:false};
     const help = React.useRef(null), tip = React.useRef(null), hideTimer = React.useRef(null);
     const hovered = React.useRef(false), focused = React.useRef(false);
     const currentSession = React.useRef(sessionId);
@@ -155,15 +165,26 @@ window.__ModuleLoader__.load({ id: "dsh-memory-bridge-profile", factory: (requir
       return () => { live = false; cancelHide(); };
     }, [sessionId]);
     React.useEffect(()=>{
-      if(!enabled||!sessionId)return;
+      let live=true;
+      setBenefitState({sessionId,avoid:false,save:false});
+      if(!enabled||!sessionId)return()=>{live=false};
+      const addBenefits=value=>{
+        if(!live||currentSession.current!==sessionId||(!value.avoid&&!value.save))return;
+        setBenefitState(previous=>({sessionId,avoid:(previous.sessionId===sessionId&&previous.avoid)||value.avoid,save:(previous.sessionId===sessionId&&previous.save)||value.save}));
+      };
+      // Reload actual persisted types on session entry; tool results update immediately.
+      api('verified-memory?session_id='+encodeURIComponent(sessionId)).then(d=>{
+        if(!live||currentSession.current!==sessionId)return;
+        for(const record of d.records||[])addBenefits(memoryBenefits(record));
+      }).catch(()=>{});
       const source=hostContext?.get?.('sessions')?.binding?.(sessionId)?.eventSource;
-      if(!source?.subscribe||!source?.getSnapshot)return;
-      return watchVerificationResults(source,turn=>{
-        if(currentSession.current!==sessionId)return;
+      const dispose=source?.subscribe&&source?.getSnapshot?watchVerificationResults(source,turn=>{
+        if(!live||currentSession.current!==sessionId)return;
         const key=sessionId+':'+turn;
         if(openedVerificationTurns.has(key))return;
         openedVerificationTurns.add(key);openVerifications(sessionId);
-      });
+      },addBenefits):undefined;
+      return()=>{live=false;dispose?.()};
     },[sessionId,enabled]);
     React.useLayoutEffect(() => {
       if (!open || !help.current || !tip.current) { setPosition(null); return; }
@@ -216,8 +237,8 @@ window.__ModuleLoader__.load({ id: "dsh-memory-bridge-profile", factory: (requir
           h("circle", { cx: 10, cy: 10, r: 7.6 }),
           h("path", { d: "M7.8 7.6a2.3 2.3 0 0 1 4.5.7c0 1.6-2.3 1.9-2.3 3.3" }),
           h("circle", { cx: 10, cy: 14.2, r: .65, fill: "currentColor", stroke: "none" }))),
-      enabled ? h('button',{type:'button',className:'dsh-evolith-help','aria-label':'查看记忆使用记录',title:'查看本对话使用记忆带来的帮助',onClick:()=>openVerifications(sessionId)},
-        h('svg',{width:17,height:17,viewBox:'0 0 20 20',fill:'none',stroke:'currentColor',strokeWidth:1.5,'aria-hidden':true},h('path',{d:'M10 2.4 16 5v4.4c0 3.6-2.6 5.9-6 8.2-3.4-2.3-6-4.6-6-8.2V5Z'}),h('path',{d:'m6.7 9.5 2.1 2.1 4.4-4.4'}))) : null,
+      enabled ? h('button',{type:'button',className:'dsh-evolith-help dsh-evolith-benefit-trigger'+(benefits.avoid||benefits.save?' dsh-evolith-benefit-trigger--active':''),'aria-label':'查看记忆使用记录',title:benefits.avoid||benefits.save?'本会话已触发：'+[benefits.avoid?'避免问题':null,benefits.save?'节省调用':null].filter(Boolean).join('、')+'；点击查看记忆使用记录':'尚未记录记忆收益；点击查看使用记录',onClick:()=>openVerifications(sessionId)},
+        benefits.avoid||benefits.save?h('span',{className:'dsh-evolith-trigger-icon dsh-evolith-trigger-icon--'+(benefits.avoid&&benefits.save?'both':benefits.avoid?'avoid':'save'),role:'img','aria-label':benefits.avoid&&benefits.save?'已触发避免问题和节省调用':benefits.avoid?'已触发避免问题':'已触发节省调用'},benefitGlyph(benefits.avoid&&benefits.save?'both':benefits.avoid?'avoid':'save',19)):benefitGlyph('avoid',17)) : null,
       error ? h("span", { role: "alert", title: error, style: { color: "#b42318", fontSize: 12 } }, "设置失败") : null,
       tooltip);
   }
