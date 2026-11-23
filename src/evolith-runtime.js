@@ -206,7 +206,7 @@ function installEvolithBridge(ctx, config = {}, deps = {}) {
         if (s.serverUrl !== connection.serverUrl || s.apiToken !== connection.apiToken) {
           for (const set of active.values()) for (const c of set) c.abort();
           await consent.ready;
-          for (const id of Object.keys(consent.sessions)) await consent.set(id, false);
+          for (const id of Object.keys(consent.sessions)) await consent.resetForConnection(id);
           for(const entry of verificationTools.values())entry.dispose();
           verificationTools.clear();
           views.clear();

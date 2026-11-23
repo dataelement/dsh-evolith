@@ -145,10 +145,10 @@ async function runReplay({name,enabled=true,rs=rounds,memoryFailure=false,slowCo
     };
     await ctx.plugin({name:'evolith-bizagent-regression',inject:['tokenMeter'],apply(scope){runtime=installEvolithBridge(scope,{}, {consent,verificationStore,fetchImpl:fakeFetch,outboxPath:join(temp,'outbox.json'),store:{loadConfig:async()=>({serverUrl:'http://memory.test.invalid',apiToken:'test-only-not-a-real-token'})}});}});
     await runtime.ready;
-    await consent.set('bizagent-regression-'+name,enabled);
+    if(enabled)await consent.set('bizagent-regression-'+name,true);else await consent.resetForConnection('bizagent-regression-'+name);
     handle=await ctx.agents.create({sessionId:'bizagent-regression-'+name,agentOptions:{provider:'bizagent-replay',model:'recorded-case-022'}});
     if(enabled&&!verificationProbe){await consent.set(handle.agent.session.id,true);await runtime.syncVerificationTools(handle.agent);}
-    if(verificationProbe){await consent.set('another-disabled-conversation',false);const other=await ctx.agents.create({sessionId:'another-disabled-conversation',agentOptions:{provider:'bizagent-replay',model:'recorded-case-022'}});try{assert.ok(!other.agent.ctx.get('tools').schemas().some(t=>t.name===VERIFIED_MEMORY_TOOL),'Verification tool leaked into another disabled conversation')}finally{await other.dispose()}}
+    if(verificationProbe){await consent.resetForConnection('another-disabled-conversation');const other=await ctx.agents.create({sessionId:'another-disabled-conversation',agentOptions:{provider:'bizagent-replay',model:'recorded-case-022'}});try{assert.ok(!other.agent.ctx.get('tools').schemas().some(t=>t.name===VERIFIED_MEMORY_TOOL),'Verification tool leaked into another disabled conversation')}finally{await other.dispose()}}
 
     for(const [i,r] of rs.entries()){
       turn=i+1;step=0;
@@ -205,7 +205,7 @@ async function runReplay({name,enabled=true,rs=rounds,memoryFailure=false,slowCo
     }
     if(!enabled){assert.equal(calls.length,0,'Disabled mode contacted memory service');}
     if(!memoryFailure){assert.equal(stats.model_calls,countSteps(rs));assert.equal(stats.tool_calls,countTools(rs));}
-    if(verificationProbe){const saved=await verificationStore.list(consent.owner(),handle.agent.session.id);assert.equal(saved.length,1);assert.equal(saved[0].memory_id,'regression-confirmed-fact');assert.equal(saved[0].evidence.tool_name,'search_knowledge');stats.verified_records=saved.length;await consent.set(handle.agent.session.id,false);await runtime.syncVerificationTools(handle.agent);assert.ok(!handle.agent.ctx.get('tools').schemas().some(t=>t.name===VERIFIED_MEMORY_TOOL),'Tool still exposed after opt-out');}
+    if(verificationProbe){const saved=await verificationStore.list(consent.owner(),handle.agent.session.id);assert.equal(saved.length,1);assert.equal(saved[0].memory_id,'regression-confirmed-fact');assert.equal(saved[0].evidence.tool_name,'search_knowledge');stats.verified_records=saved.length;await assert.rejects(consent.set(handle.agent.session.id,false),/本会话开启，无法关闭/);await consent.resetForConnection(handle.agent.session.id);await runtime.syncVerificationTools(handle.agent);assert.ok(!handle.agent.ctx.get('tools').schemas().some(t=>t.name===VERIFIED_MEMORY_TOOL),'Tool still exposed after opt-out');}
     stats.prune_events=handle.agent.session.snapshotEvents().filter(e=>e.type==='compaction/prune').length;
     stats.api_calls=calls.map(c=>({path:c.path,turn:c.turn}));
     return stats;
@@ -225,7 +225,7 @@ await check('memory_failure_is_visible_and_turn_closes',async()=>{const s=await 
 await check('verified_memory_tool_persists_evidence_in_native_loop',async()=>{
   const rs=structuredClone(rounds.slice(0,5));
   rs[4].steps.splice(-1,0,{text:'',calls:[{id:'case022-verify-memory-1',name:VERIFIED_MEMORY_TOOL,arguments:{title:'银行受理不代表公司已授权',usage_summary:'支付前区分银行是否受理与公司是否授权。',verification_summary:'查阅业务规则，确认超限付款不代表公司授权。',memory_id:'regression-confirmed-fact',memory_quote:'The bank can accept a technically authenticated payment',application:'Used this memory to distinguish bank acceptance from company payment authorization.',verification_reason:'The knowledge search result explicitly confirms that technical bank acceptance above the company limit is not an authorized company execution.',evidence_type:'tool_result',evidence_quote:'The bank can accept a technically authenticated payment above that company limit, but this is not an authorized company execution.'},result:'',is_error:false}]});
-  const s=await runReplay({name:'verified_memory',rs,verificationProbe:true});return {verified_records:s.verified_records,real_tool_dispatched:true,tool_removed_on_opt_out:true};
+  const s=await runReplay({name:'verified_memory',rs,verificationProbe:true});return {verified_records:s.verified_records,real_tool_dispatched:true,tool_removed_on_connection_reset:true};
 });
 
 // Evaluate the shipped stylesheet using a real DOM/CSS engine. No user app is controlled.

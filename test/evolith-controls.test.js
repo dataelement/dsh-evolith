@@ -3,12 +3,12 @@ import {readFile} from 'node:fs/promises';
 import {runInNewContext} from 'node:vm';
 import test from 'node:test';
 
-async function controls() {
+async function controls({initialEnabled=true}={}) {
   let definition,Toggle,cursor=0,timeout;
   const cells=[],calls=[];
   const react={
     createElement:(type,props,...children)=>({type,props:props||{},children}),
-    useState(initial){const i=cursor++;if(!(i in cells))cells[i]=i===1?false:initial;return[cells[i],value=>{cells[i]=typeof value==='function'?value(cells[i]):value}]},
+    useState(initial){const i=cursor++;if(!(i in cells))cells[i]=i===0?initialEnabled:i===1?false:initial;return[cells[i],value=>{cells[i]=typeof value==='function'?value(cells[i]):value}]},
     useRef(initial){const i=cursor++;if(!(i in cells))cells[i]={current:initial};return cells[i]},
     useId:()=> 'evolith-help-test', useEffect(){},useLayoutEffect(){}
   };
@@ -46,7 +46,7 @@ test('hover and keyboard focus open a portal containing the complete privacy exp
   assert.equal(tip.props.id,'evolith-help-test');
   assert.match(f.text(tip),/用户消息、模型回复和工具结果/);
   assert.match(f.text(tip),/发送至你配置的服务端/);
-  assert.match(f.text(tip),/关闭后不接入/);
+  assert.match(f.text(tip),/本会话内无法关闭/);
   const help=all.find(n=>n.props['aria-label']==='Evolith 模式说明');
   assert.equal(help.props['aria-describedby'],tip.props.id);
   help.props.onMouseLeave();f.leave();
@@ -56,14 +56,20 @@ test('hover and keyboard focus open a portal containing the complete privacy exp
   assert.equal(f.calls.length,0); // Help never changes consent or uploads data.
 });
 
-test('the new switch persists the selected state through the same local consent API',async()=>{
+test('enabled switch is locked and cannot issue a closing request',async()=>{
   const f=await controls();
+  const toggle=f.nodes(f.render()).find(n=>n.props.role==='switch');
+  assert.equal(toggle.props.disabled,true);
+  assert.match(toggle.props.title,/本会话内无法关闭/);
+  await toggle.props.onClick();assert.equal(f.calls.length,0);
+});
+test('an old disabled session may enable Evolith once, then becomes locked',async()=>{
+  const f=await controls({initialEnabled:false});
   await f.nodes(f.render()).find(n=>n.props.role==='switch').props.onClick();
-  assert.equal(f.nodes(f.render()).find(n=>n.props.role==='switch').props['aria-checked'],false);
-  assert.equal(f.calls[0].options.method,'PUT');
-  assert.deepEqual(JSON.parse(f.calls[0].options.body),{enabled:false});
-  await f.nodes(f.render()).find(n=>n.props.role==='switch').props.onClick();
-  assert.deepEqual(JSON.parse(f.calls[1].options.body),{enabled:true});
+  assert.deepEqual(JSON.parse(f.calls[0].options.body),{enabled:true});
+  const toggle=f.nodes(f.render()).find(n=>n.props.role==='switch');
+  assert.equal(toggle.props['aria-checked'],true);assert.equal(toggle.props.disabled,true);
+  await toggle.props.onClick();assert.equal(f.calls.length,1);
 });
 
 test('keyboard focus keeps the help card open when the mouse leaves, then blur closes it',async()=>{

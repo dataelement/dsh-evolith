@@ -27,7 +27,7 @@ test("disabled sessions send no history, queries, telemetry or writes", async ()
     calls++;
     throw Error("Unexpected network");
   });
-  await f.consent.set(f.session.id, false);
+  await f.consent.resetForConnection(f.session.id);
   const input = { agent: { session: f.session }, turn: 1, step: 1 };
   assert.equal(await f.hooks["agent/pre-step"](input, async () => f.decision), f.decision);
   f.hooks["session/event"](f.session, { type: "assistant/message", data: { usage: { inputTokens: 1 } } });
@@ -49,7 +49,7 @@ test("enabled session uses opt-in endpoint and appends delta after user", async 
   assert.equal(calls.length, 1);
   assert.ok(calls[0].url.endsWith("/v1/evolith/prepare"));
 });
-test("opt-out while read is pending prevents injection or window movement", async () => {
+test("connection revocation while read is pending prevents injection or window movement", async () => {
   let finish, started;
   const start = new Promise((resolve) => started = resolve);
   const f = await fixture(async () => {
@@ -60,7 +60,7 @@ test("opt-out while read is pending prevents injection or window movement", asyn
   await f.consent.set("session-one", true);
   const pending = f.hooks["agent/pre-step"]({ agent: { session: f.session }, turn: 1, step: 1 }, async () => f.decision);
   await start;
-  await f.consent.set("session-one", false);
+  await f.consent.resetForConnection("session-one");
   finish();
   assert.equal(await pending, f.decision);
 });
@@ -69,7 +69,8 @@ test("new sessions default on independently of another session choice", async ()
   await store.set("a", true);
   assert.equal(await store.enabled("a"), true);
   assert.equal(await store.enabled("b"), true);
-  await store.set("a", false);
+  await assert.rejects(store.set("a", false), /本会话开启，无法关闭/);
+  await store.resetForConnection("a");
   assert.equal(await store.enabled("a"), false);
   assert.equal(await store.enabled("b"), true);
 });
@@ -190,10 +191,34 @@ test('other Memory errors are not mislabeled as an invalid key',async()=>{
 test('default-on does not override saved choices or cross account ownership',async()=>{
  const store=new EvolithConsent();store.owner=()=> 'first';
  assert.equal(await store.enabled('new'),true);
- await store.set('off',false);await store.set('on',true);
+ await store.resetForConnection('off');await store.set('on',true);
  assert.equal(await store.enabled('off'),false);
  store.owner=()=> 'second';
  assert.equal(await store.enabled('on'),false);
  assert.equal(await store.enabled('new-second'),true);
  assert.equal(await store.enabled(''),false);
+});
+
+test('default-on and explicitly enabled sessions reject closing without losing persisted state',async()=>{
+ const {mkdtemp,rm}=await import('node:fs/promises');const {tmpdir}=await import('node:os');
+ const dir=await mkdtemp(join(tmpdir(),'evolith-lock-'));
+ try{
+  const store=new EvolithConsent(join(dir,'consent.json'));store.owner=()=> 'account';
+  await assert.rejects(store.set('new',false), /本会话开启，无法关闭/);
+  await store.set('saved',true);
+  const closing=store.set('saved',false),opening=store.set('saved',true);
+  await assert.rejects(closing,/本会话开启，无法关闭/);await opening;
+  const reopened=new EvolithConsent(join(dir,'consent.json'));reopened.owner=()=> 'account';
+  assert.equal(await reopened.enabled('saved'),true);
+  await assert.rejects(reopened.set('saved',false),/本会话开启，无法关闭/);
+ }finally{await rm(dir,{recursive:true,force:true})}
+});
+
+test('default activation is persisted under its account and never overwrites a queued revocation',async()=>{
+ const store=new EvolithConsent();store.owner=()=> 'first';
+ assert.equal(await store.enabled('default'),true);
+ assert.equal(store.sessions.default.owner,'first');
+ store.owner=()=> 'second';assert.equal(await store.enabled('default'),false);
+ const resetting=store.resetForConnection('race'),reading=store.enabled('race');
+ await resetting;assert.equal(await reading,false);
 });

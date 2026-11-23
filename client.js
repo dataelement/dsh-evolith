@@ -173,7 +173,8 @@ window.__ModuleLoader__.load({ id: "dsh-memory-bridge-profile", factory: (requir
       };
     }, [open]);
     async function change() {
-      const id = sessionId, next = !enabled;
+      if (enabled) return;
+      const id = sessionId, next = true;
       setBusy(true); setError("");
       try {
         await api("evolith?session_id=" + encodeURIComponent(id), "PUT", { enabled: next });
@@ -190,10 +191,10 @@ window.__ModuleLoader__.load({ id: "dsh-memory-bridge-profile", factory: (requir
         h("div", { className: "dsh-evolith-privacy" },
           h("strong", null, "默认开启 · 会话内容将发送至记忆服务端"),
           h("p", null, "整个 session 的用户消息、模型回复和工具结果将发送至你配置的服务端处理与保存。")),
-        h("p", { className: "dsh-evolith-tooltip-foot" }, "关闭后不接入 Evolith，也不再上传会话数据。")), document.body) : null;
+        h("p", { className: "dsh-evolith-tooltip-foot" }, "Evolith 一旦开启，本会话内无法关闭，将持续使用记忆管理。")), document.body) : null;
     return h("span", { className: "dsh-evolith-control" },
       h("button", { type: "button", role: "switch", className: "dsh-evolith-switch", "aria-label": "启用Evolith模式",
-        "aria-checked": enabled, "aria-busy": busy || undefined, disabled: busy || !sessionId, onClick: change },
+        "aria-checked": enabled, "aria-busy": busy || undefined, disabled: busy || !sessionId || enabled, title: enabled ? "Evolith 已开启，本会话内无法关闭" : "开启 Evolith 后，本会话内无法关闭", onClick: change },
         h("span", { className: "dsh-evolith-track", "aria-hidden": true }, h("span", { className: "dsh-evolith-thumb" })),
         h("span", null, "Evolith")),
       h("button", { ref: help, type: "button", className: "dsh-evolith-help", "aria-label": "Evolith 模式说明",
@@ -236,7 +237,7 @@ window.__ModuleLoader__.load({ id: "dsh-memory-bridge-profile", factory: (requir
       "section",
       { style: { maxWidth: 1e3, display: "grid", gap: 16 } },
       h("h2", { style: { margin: 0, fontSize: 24 } }, "记忆"),
-      h("p", { style: { margin: 0, fontSize: 13, lineHeight: 1.6, color: "#737b89" } }, "Evolith 默认开启，可在会话输入框旁关闭。"),
+      h("p", { style: { margin: 0, fontSize: 13, lineHeight: 1.6, color: "#737b89" } }, "Evolith 默认开启，开启后本会话内无法关闭。"),
       h("div", { style: { display: "flex", gap: 10 } }, button("刷新", load), button("记忆管理", () => {
         const target = new URL("/workbench", url).href;
         const side = hostContext?.get?.("sidebarRight"), tabs = hostContext?.get?.("sidebarRightTabs");
