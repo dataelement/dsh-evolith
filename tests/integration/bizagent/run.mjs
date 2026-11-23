@@ -40,7 +40,7 @@ const errors=[];
 function deadline(work,ms,label){let timer;return Promise.race([work,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error(label+' timed out')),ms)})]).finally(()=>clearTimeout(timer));}
 async function until(check,label){await deadline((async()=>{while(!await check())await new Promise(r=>setTimeout(r,5))})(),3000,label);}
 
-async function runReplay({name,enabled=true,rs=rounds,memoryFailure=false,slowComplete=false,verificationProbe=false}) {
+async function runReplay({name,enabled=true,rs=rounds,memoryFailure=false,slowComplete=false,verificationProbe=false,enableAtTurn=1}) {
   const ctx=new Context(),temp=await mkdtemp(join(tmpdir(),'bizagent-dsh-'));
   const stats={name,enabled,rounds:0,model_calls:0,tool_calls:0,prepare_turns:[],memory_insertions:[],evictions:[],round_checks:[],status_events:[],background_complete_blocked:false,stable_prefix_checks:0,native_boundary_checks:0};
   let previousRequest,previousSegment;
@@ -62,6 +62,7 @@ async function runReplay({name,enabled=true,rs=rounds,memoryFailure=false,slowCo
         assert.ok(request.messages.some(m=>m.role==='user'&&m.content.some(b=>b.text===rs[turn-1].query)),'Current user query missing from model context');
         assert.ok(request.messages.some(m=>m.role==='system'&&m.content.some(b=>b.text?.startsWith('BizAgentBench deterministic DSH regression.'))),'System prompt lost during window shift');
         assert.equal((request.tools||[]).some(t=>t.name===VERIFIED_MEMORY_TOOL),enabled,'Verification tool must be scoped to opted-in sessions');
+        if(enabled)assert.ok(request.messages.some(m=>m.role==='system'&&m.content.some(b=>b.text?.includes('MEMORY VERIFICATION POLICY'))),'Evolith system policy lost during window shift');
         const memory=request.messages.filter(m=>m.id?.startsWith('dsh-interval-memory:'));
         assert.equal(new Set(memory.map(m=>m.id)).size,memory.length,'Duplicate memory message IDs');
         if(enabled&&turn>=5)assert.ok(memory.length,'Expected frozen memory is missing from the real model request');
@@ -129,10 +130,12 @@ async function runReplay({name,enabled=true,rs=rounds,memoryFailure=false,slowCo
         assert.ok(!JSON.stringify(body.history).includes('RETRIEVED HISTORICAL MEMORY'),'Injected memory was uploaded as raw public history');
         assert.ok(!JSON.stringify(body.history).includes('Original conversation rounds through'),'Prune marker was uploaded as user input');
         if(memoryFailure)return {ok:false,json:async()=>({detail:'INJECTED_MEMORY_PREPARE_FAILURE'})};
+        const firstLateRead=enableAtTurn>1&&body.turn===enableAtTurn;
+        if(firstLateRead)assert.ok(body.history.some(m=>m.turn===1&&m.role==='assistant'),'Disabled first-turn history was not backfilled');
         const segment=Math.floor((body.turn-1)/4)*4+1,cutoff=Math.max(0,segment-8);
         assert.ok(committed>=cutoff,'Window eviction outran committed writer');
         const response={turn:body.turn,evicted_through:cutoff,committed_turns:committed,memory_generation:Math.floor(committed/4),
-          memory_delta:{message_text:body.turn===segment&&body.turn>=5?(verificationProbe?'RETRIEVED HISTORICAL MEMORY\n\n[Memory regression-confirmed-fact]\nSource batch: test fixture, business rounds 1-1.\nFeedback exposures: 0 | Positive rate: N/A\nThe bank can accept a technically authenticated payment above that company limit, but this is not an authorized company execution.':`RETRIEVED HISTORICAL MEMORY\nRecorded integration fixture, frozen segment ${segment}. Historical public query: ${rs[Math.max(0,segment-5)].query}`):''}};
+          memory_delta:{message_text:(firstLateRead||body.turn===segment&&body.turn>=5)?(verificationProbe?'RETRIEVED HISTORICAL MEMORY\n\n[Memory regression-confirmed-fact]\nSource batch: test fixture, business rounds 1-1.\nFeedback exposures: 0 | Positive rate: N/A\nThe bank can accept a technically authenticated payment above that company limit, but this is not an authorized company execution.':`RETRIEVED HISTORICAL MEMORY\nRecorded integration fixture, frozen segment ${segment}. Historical public query: ${rs[Math.max(0,segment-5)].query}`):''}};
         call.response=response;return {ok:true,json:async()=>response};
       }
       if(path==='complete'){
@@ -145,6 +148,7 @@ async function runReplay({name,enabled=true,rs=rounds,memoryFailure=false,slowCo
     };
     await ctx.plugin({name:'evolith-bizagent-regression',inject:['tokenMeter'],apply(scope){runtime=installEvolithBridge(scope,{}, {consent,verificationStore,fetchImpl:fakeFetch,outboxPath:join(temp,'outbox.json'),store:{loadConfig:async()=>({serverUrl:'http://memory.test.invalid',apiToken:'test-only-not-a-real-token'})}});}});
     await runtime.ready;
+    if(enableAtTurn>1)enabled=false;
     if(enabled)await consent.set('bizagent-regression-'+name,true);else await consent.resetForConnection('bizagent-regression-'+name);
     handle=await ctx.agents.create({sessionId:'bizagent-regression-'+name,agentOptions:{provider:'bizagent-replay',model:'recorded-case-022'}});
     if(enabled&&!verificationProbe){await consent.set(handle.agent.session.id,true);await runtime.syncVerificationTools(handle.agent);}
@@ -152,6 +156,10 @@ async function runReplay({name,enabled=true,rs=rounds,memoryFailure=false,slowCo
 
     for(const [i,r] of rs.entries()){
       turn=i+1;step=0;
+      if(enableAtTurn>1&&turn===enableAtTurn){
+        enabled=true;await consent.set(handle.agent.session.id,true);await runtime.syncVerificationTools(handle.agent);
+        previousRequest=null;
+      }
       handle.agent.followup(llm.createUserMessage({source:{kind:'user'},content:[{type:'text',text:r.query}]}));
       await deadline(handle.agent.whenIdle(),5000,`DSH turn ${turn} return to idle`);
       const events=handle.agent.session.snapshotEvents(),end=events.at(-1);
@@ -217,6 +225,12 @@ async function runReplay({name,enabled=true,rs=rounds,memoryFailure=false,slowCo
 }
 
 async function check(name,fn){const start=performance.now();try{const value=await fn();report.checks.push({name,passed:true,seconds:(performance.now()-start)/1000,...value});console.log('PASS '+name)}catch(e){report.checks.push({name,passed:false,error:e.stack,seconds:(performance.now()-start)/1000});errors.push(e);console.error('FAIL '+name+'\n'+e.stack)}}
+for(const enableAtTurn of [2,6])await check(`enable_on_turn_${enableAtTurn}_reads_memory_and_backfills_history`,async()=>{
+  const s=await runReplay({name:'late_enable_'+enableAtTurn,rs:rounds,enableAtTurn});
+  assert.deepEqual(s.prepare_turns,Array.from({length:47-enableAtTurn},(_,i)=>i+enableAtTurn));
+  assert.ok(s.memory_insertions.includes(enableAtTurn),'Late activation did not deliver memory to Actor');
+  return {prepare_turns:s.prepare_turns,memory_insertions:s.memory_insertions,initial_disabled_turns:enableAtTurn-1,native_rounds:s.rounds,persistence_reopens:s.storage_roundtrip_checks};
+});
 await check('full_case_memory_off',async()=>{const s=await runReplay({name:'memory_off',enabled:false});return {rounds:s.rounds,model_calls:s.model_calls,tool_calls:s.tool_calls}});
 await check('full_case_memory_on',async()=>{const s=await runReplay({name:'memory_on'});assert.ok(s.stable_prefix_checks>90);assert.equal(s.native_boundary_checks,46);assert.equal(s.storage_roundtrip_checks,46);assert.deepEqual(s.memory_insertions,Array.from({length:11},(_,i)=>5+4*i));return {rounds:s.rounds,model_calls:s.model_calls,tool_calls:s.tool_calls,insertions:s.memory_insertions,stable_prefix_checks:s.stable_prefix_checks,native_boundary_checks:s.native_boundary_checks,storage_roundtrip_checks:s.storage_roundtrip_checks}});
 await check('slow_memory_completion_does_not_keep_agent_running',async()=>{const s=await runReplay({name:'slow_complete',rs:rounds.slice(0,1),slowComplete:true});assert.equal(s.idle_while_memory_blocked,true);return {idle_while_memory_blocked:true}});

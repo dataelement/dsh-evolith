@@ -26,36 +26,42 @@ function replacePrefix(session, meter, state) {
   const owners = ownership(session);
   const nodes = session.surface.nodes;
   const cutoff = state.evicted_through;
-  const prefix = [];
+  const blocks = [];
+  let block = [], retainedStarted = false;
   const first = nodes.findIndex((seq) => owners.get(seq) !== -1);
   const conversational = first < 0 ? [] : nodes.slice(first);
+  const flush = () => { if (block.length) { blocks.push(block); block = []; } };
   for (const seq of conversational) {
     const owner = owners.get(seq);
     if (owner === void 0) throw new Error("Unowned surface message");
-    if (owner >= 0 && owner <= cutoff) prefix.push(seq);
-    else break;
+    // DSH may append a new system prompt when Evolith is enabled mid-session.
+    // Preserve it in place and prune expired conversational blocks on each side.
+    if (owner === -1) { flush(); continue; }
+    if (owner >= 0 && owner <= cutoff) {
+      if (retainedStarted) throw new Error("Expired rounds are not a contiguous surface prefix");
+      block.push(seq);
+    } else { flush(); retainedStarted = true; }
   }
-  if (conversational.slice(prefix.length).some((seq) => owners.get(seq) >= 0 && owners.get(seq) <= cutoff)) {
-    throw new Error("Expired rounds are not a contiguous surface prefix");
-  }
+  flush();
   const message = {
     id: pruneId + randomUUID(),
     role: "user",
     source: { kind: "user" },
     content: [{ type: "text", text: "Original conversation rounds through " + cutoff + " have left the retained conversation window." }]
   };
-  if (prefix.length) {
+  for (const prefix of blocks) {
     const shadowedRange = { start: prefix[0], end: prefix.at(-1) };
     const prices = new Map(meter.measure(session).nodes.map((n) => [n.seq, n.heuristicTokens]));
     const shadowedTokenCount = prefix.reduce((n, seq) => n + prices.get(seq), 0);
     if (!Number.isFinite(shadowedTokenCount)) throw new Error("Missing native token price");
     session.append("compaction/prune", { shadowedRange, shadowedSeqs: [...prefix], shadowedTokenCount, reason: "token-saving-window" });
-    session.append("user/message", message, {
+    session.append("user/message", { ...message, id: pruneId + randomUUID() }, {
       surfaceOp: { op: "replace", startSeq: shadowedRange.start, endSeq: shadowedRange.end },
       sourceEventSeqs: prefix
     });
   }
-  return { evicted_through: Math.max(0, cutoff), retained_turns: [...new Set(conversational.slice(prefix.length).map((seq) => owners.get(seq)))] };
+  const removed = new Set(blocks.flat());
+  return { evicted_through: Math.max(0, cutoff), retained_turns: [...new Set(conversational.filter(seq => !removed.has(seq) && owners.get(seq) > 0).map(seq => owners.get(seq)))] };
 }
 function compactableGroups(session) {
   const owners = ownership(session);

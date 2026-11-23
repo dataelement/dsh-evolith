@@ -42,4 +42,6 @@
 
 来源：`reports/bizagent_incremental_vs_baseline4x3_flash1017_20261116/case22_audit/baseline_r1_022.json.gz`。fixture 只保留合成 benchmark 的公共用户对话、Actor 回复、Actor 工具调用及返回、原评分和来源哈希；不含模型密钥、用户模拟器私有工具或内部 reasoning。
 
-新增真实内核验证：Actor 调用记忆验证工具，保存可追溯证据，并在关闭 Evolith 后检查工具撤下。
+新增真实内核验证：Actor 调用记忆验证工具，保存可追溯证据，并在连接授权撤销后检查工具撤下。
+
+新增中途开启验证：分别从第2轮、第6轮开启，完整回放46轮；检查历史补传、首次记忆注入、后续检索、系统提示保留、窗口移出和每轮日志重开。
