@@ -1,3 +1,4 @@
+import { installEvolithBridge } from './src/evolith-runtime.js'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { createHash, randomUUID } from 'node:crypto'
 
@@ -22,7 +23,7 @@ import { WorkspaceAutoJoin } from './src/auto-join.js'
 import { DiagnosticOutbox, diagnoseError } from './src/diagnostics.js'
 
 export const name = 'dsh-memory-bridge'
-export const inject = ['commands', 'workspaceRegistry', 'sessionQuery']
+export const inject = ['tokenMeter']
 
 const MEMORY_CONTEXT_NAME = 'dsh-memory-bridge:claims'
 const MEMORY_DISCLOSURE_INSTRUCTION = [
@@ -690,7 +691,7 @@ export function installMemoryBridge(ctx, rawConfig = {}, dependencies = {}) {
 }
 
 export function apply(ctx, config) {
-  installMemoryBridge(ctx, config)
+  return installEvolithBridge(ctx, config)
 }
 
 export {

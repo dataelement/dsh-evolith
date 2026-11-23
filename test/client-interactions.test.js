@@ -74,14 +74,14 @@ test('the shipped save handler marks mutations and leaves the stored key untouch
   assert.deepEqual(JSON.parse(call.options.body), { server_url: 'http://memory.invalid:9000' })
 })
 
-test('project names remain visible and a completed server task replaces stale local processing', async () => {
-  const f = await fixture({
-    local: [{ session_id: 's', title: '原有会话名', workspace_id: 'w', group_id: 'g', processing: { job_id: 'ma_one', status: 'queued', message: '等待服务器处理' } }],
-    remote: [{ job_id: 'ma_one', group_id: 'g', workspace_id: 'w', workspace_name: '真实项目名', session_title: '原有会话名', status: 'succeeded', new_memory_count: 2 }]
-  })
+test('settings keeps connection and collapsed local errors without legacy panels', async () => {
+  const f = await fixture()
   const tree = f.render(), text = f.text(tree)
-  assert.match(text, /真实项目名/); assert.match(text, /原有会话名/)
-  assert.match(text, /已提炼并保存/); assert.match(text, /新增 2 条/)
-  assert.doesNotMatch(text, /服务器提炼任务|等待服务器处理|服务器处理中/)
-  assert.equal(f.nodes(tree).filter(n => n.props.className === 'dshMemoryItem' && f.text(n).includes('原有会话名')).length, 1)
+  assert.match(text, /线上服务连接/)
+  assert.match(text, /本地错误日志/)
+  assert.doesNotMatch(text, /记忆处理状态|已加入的工作区|会话处理与失败重试|真实项目名/)
+  const detail = f.nodes(tree).find(n => n.type === 'details')
+  assert.ok(detail)
+  assert.ok(!detail.props.open)
+  assert.ok(!f.calls.some(c => /processing|catalog|groups/.test(c.url)))
 })

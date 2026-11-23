@@ -1,263 +1,288 @@
-window.__ModuleLoader__.load({
-  id: 'dsh-memory-bridge-profile',
-  factory: require => {
-    const React = require('react'), h = React.createElement, API = '/dsh-memory-bridge/manager/'
-    // Keep the implementation available while its settings entry is hidden.
-    const SHOW_AUTO_JOIN_SETTINGS = false
-    let hostContext
-    const managementUrl = value => {
-      try {
-        const url = new URL('/workbench', value)
-        return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password ? url.href : undefined
-      } catch { return undefined }
-    }
-    const css = [
-      '.dshMemorySection{--memory-accent:var(--dsw-alias-brand-primary,#2563eb);width:100%;min-width:0;max-width:1100px;container-type:inline-size;display:flex;flex-direction:column;gap:24px;color:var(--dsw-alias-label-primary,#17212b);font-size:14px;line-height:1.6}',
-      '.dshMemorySection *{box-sizing:border-box}.dshMemorySection h2{font-size:24px;line-height:1.35;margin:0;font-weight:650;letter-spacing:-.4px}.dshMemorySection h3{font-size:16px;margin:0;font-weight:600}',
-      '.dshMemoryRow,.dshMemoryActions{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.dshMemoryActions{justify-content:flex-start}.dshMemoryHeader{align-items:flex-start}.dshMemoryHeader p{margin-top:6px}',
-      '.dshMemoryPanel{padding:22px 24px;border:1px solid var(--dsw-alias-border-l2,#e3e7ed);border-radius:12px;background:var(--dsw-alias-bg-module-platform,#fff)}.dshMemoryPanel>div+div{margin-top:16px}.dshMemoryPanelHead{margin-bottom:18px}.dshMemoryFormSection+.dshMemoryFormSection{margin-top:24px;padding-top:24px;border-top:1px solid var(--dsw-alias-border-l2,#e3e7ed)}',
-      '.dshMemoryStep{display:flex;align-items:center;gap:10px;font-weight:600;margin:0 0 14px}.dshMemoryStep b{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:6px;background:var(--dsw-alias-bg-layer-2,#f1f4f8);font-size:12px;color:var(--dsw-alias-label-secondary,#667085)}',
-      '.dshMemoryInput{width:100%;min-height:42px;padding:9px 12px;border:1px solid var(--dsw-alias-border-l3,#cdd5df);border-radius:8px;background:var(--dsw-alias-bg-layer-1,#fff);color:inherit;font:inherit;font-size:14px}.dshMemoryInput:focus-visible{outline:2px solid var(--memory-accent);outline-offset:2px}.dshMemoryInput[aria-invalid=true]{border-color:#b42318}',
-      '.dshMemoryButton{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:8px 14px;min-height:38px;border:1px solid var(--dsw-alias-border-l3,#cdd5df);border-radius:8px;background:var(--dsw-alias-bg-layer-1,#fff);color:inherit;font:inherit;font-size:13px;cursor:pointer;text-decoration:none;white-space:nowrap}.dshMemoryButton:hover{background:var(--dsw-alias-bg-layer-2,#f3f5f8)}.dshMemoryButton:disabled{opacity:.45;cursor:not-allowed}.dshMemoryButton.primary{background:var(--memory-accent);border-color:transparent;color:var(--dsw-alias-label-on-color,#fff)}',
-      '.dshMemoryHint{margin:6px 0 0;color:var(--dsw-alias-label-secondary,#667085);font-size:12px;line-height:1.7;overflow-wrap:anywhere}.dshMemoryNotice{padding:12px 14px;border-radius:8px;background:var(--dsw-alias-bg-layer-2,#f3f5f8);font-size:13px;margin:0;line-height:1.7}.dshMemoryError{color:var(--dsw-alias-state-error-primary,#b42318)}',
-      '.dshMemoryGrid{display:grid;grid-template-columns:1.3fr 1fr;gap:16px}.dshMemoryField{display:flex;flex-direction:column;gap:7px;font-size:13px}.dshMemoryField .dshMemoryHint{margin:0}.dshMemoryStack{display:flex;flex-direction:column;gap:12px}',
-      '.dshMemoryCheck{display:flex;align-items:flex-start;gap:9px;font-size:13px;cursor:pointer}.dshMemoryCheck input{margin-top:4px;accent-color:var(--memory-accent)}.dshMemorySessions{max-height:240px;overflow:auto;border:1px solid var(--dsw-alias-border-l2,#e3e7ed);border-radius:8px;margin-top:12px}.dshMemorySessionRow{padding:11px 14px;border-bottom:1px solid var(--dsw-alias-border-l2,#e3e7ed)}.dshMemorySessionRow:last-child{border-bottom:0}.dshMemorySessionRow details{margin-left:23px;font-size:11px;color:var(--dsw-alias-label-secondary,#667085)}',
-      '.dshMemoryItem{padding:16px 0;border-bottom:1px solid var(--dsw-alias-border-l2,#e3e7ed)}.dshMemoryItem:last-child{border-bottom:0;padding-bottom:0}.dshMemoryItem:first-child{padding-top:0}.dshMemoryMeta{display:flex;gap:8px 16px;flex-wrap:wrap;margin-top:5px;color:var(--dsw-alias-label-secondary,#667085);font-size:12px}.dshMemoryMono{font:11px/1.7 ui-monospace,monospace;overflow-wrap:anywhere}',
-      '.dshMemoryStatus{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:500}.dshMemoryDot{width:7px;height:7px;border-radius:50%;background:#98a2b3;flex-shrink:0}.dshMemoryStatus.good .dshMemoryDot{background:#16956b}.dshMemoryStatus.busy .dshMemoryDot{background:#3b82f6}.dshMemoryStatus.bad .dshMemoryDot{background:#d14343}.dshMemoryStatus.good{color:#16815d}.dshMemoryStatus.bad{color:#b42318}',
-      '.dshMemoryProgress{width:100%;height:7px;accent-color:var(--memory-accent);margin-top:10px}.dshMemorySection summary{cursor:pointer}.dshMemoryEmpty{padding:16px 0;color:var(--dsw-alias-label-secondary,#667085);font-size:13px}.dshMemoryFooter{padding-top:18px;margin-top:22px;border-top:1px solid var(--dsw-alias-border-l2,#e3e7ed)}',
-      '.dshMemoryDashboard{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;align-items:stretch;transition:grid-template-columns 400ms cubic-bezier(.22,1,.36,1)}.dshMemoryDashboard[data-active=status]{grid-template-columns:minmax(0,1.6fr) minmax(0,.8fr)}.dshMemoryDashboard[data-active=workspaces]{grid-template-columns:minmax(0,.8fr) minmax(0,1.6fr)}',
-      '.dshMemoryDashboardPanel{min-width:0;min-height:0;height:clamp(390px,56vh,560px);display:flex;flex-direction:column;padding:20px;overflow:hidden;transition:border-color 400ms ease,box-shadow 400ms ease,transform 400ms cubic-bezier(.22,1,.36,1)}.dshMemoryDashboardPanel .dshMemoryPanelHead{margin-bottom:14px;flex-shrink:0}.dshMemoryDashboardPanel>div+div{margin-top:0}.dshMemoryDashboardBody{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;padding-right:5px}.dshMemoryDashboardFooter{flex-shrink:0;padding-top:12px;margin-top:10px;border-top:1px solid var(--dsw-alias-border-l2,#e3e7ed)}',
-      '.dshMemoryDashboardPanel:focus-visible{outline:2px solid var(--memory-accent);outline-offset:3px}.dshMemoryDashboard[data-active=status] .dshMemoryProcessingPanel,.dshMemoryDashboard[data-active=workspaces] .dshMemoryWorkspacePanel{border-color:var(--memory-accent);box-shadow:0 8px 26px color-mix(in srgb,var(--memory-accent) 10%,transparent);transform:translateY(-2px)}.dshMemoryDashboardPanel .dshMemoryItem strong{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}.dshMemoryDashboardPanel .dshMemoryActions{gap:7px}.dshMemoryDashboardPanel .dshMemoryButton{min-height:34px;padding:6px 10px;font-size:12px}.dshMemoryDashboardPanel .dshMemoryItem>.dshMemoryRow{gap:8px;align-items:flex-start}.dshMemoryDashboardPath{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.dshMemoryDashboardSearch{margin-bottom:12px;flex-shrink:0}.dshMemoryDashboardNudge{font-size:11px;font-weight:400;white-space:nowrap;color:var(--dsw-alias-label-secondary,#667085)}',
-      '@container(max-width:680px){.dshMemoryDashboard{gap:12px}.dshMemoryDashboardPanel{padding:14px}.dshMemoryDashboardPanel .dshMemoryPanelHead{gap:6px}.dshMemoryDashboardNudge{display:none}.dshMemoryDashboard[data-active=status] .dshMemoryWorkspacePanel .dshMemoryItem>p,.dshMemoryDashboard[data-active=status] .dshMemoryWorkspacePanel .dshMemoryItem .dshMemoryButton,.dshMemoryDashboard[data-active=workspaces] .dshMemoryProcessingPanel .dshMemoryItem>:not(:first-child){display:none}}',
-      '@container(max-width:440px){.dshMemoryDashboard,.dshMemoryDashboard[data-active]{grid-template-columns:minmax(0,1fr)}.dshMemoryDashboardPanel{height:auto;min-height:300px;max-height:520px;transform:none!important}.dshMemoryDashboardBody{max-height:350px}.dshMemoryDashboard[data-active=status] .dshMemoryWorkspacePanel .dshMemoryItem>p,.dshMemoryDashboard[data-active=workspaces] .dshMemoryProcessingPanel .dshMemoryItem>:not(:first-child){display:block}.dshMemoryDashboard[data-active=status] .dshMemoryWorkspacePanel .dshMemoryItem .dshMemoryButton{display:inline-flex}.dshMemoryDashboard[data-active=workspaces] .dshMemoryProcessingPanel .dshMemoryItem>.dshMemoryMeta{display:flex}}@media(hover:none){.dshMemoryDashboard,.dshMemoryDashboard[data-active]{grid-template-columns:minmax(0,1fr)}.dshMemoryDashboardPanel{height:auto;min-height:300px;max-height:520px;transform:none!important}.dshMemoryDashboardBody{max-height:350px}.dshMemoryDashboardNudge{display:none}.dshMemoryDashboard[data-active=status] .dshMemoryWorkspacePanel .dshMemoryItem>p,.dshMemoryDashboard[data-active=workspaces] .dshMemoryProcessingPanel .dshMemoryItem>:not(:first-child){display:block}.dshMemoryDashboard[data-active=status] .dshMemoryWorkspacePanel .dshMemoryItem .dshMemoryButton{display:inline-flex}.dshMemoryDashboard[data-active=workspaces] .dshMemoryProcessingPanel .dshMemoryItem>.dshMemoryMeta{display:flex}}@media(prefers-reduced-motion:reduce){.dshMemoryDashboard,.dshMemoryDashboardPanel{transition:none!important;transform:none!important}}',
-      '.dshMemoryAutoJoin>.dshMemoryCheck{margin-bottom:14px}.dshMemoryAutoJoin>.dshMemoryActions{margin-top:16px}.dshMemoryAutoJoin .dshMemoryField{max-width:640px}',
-      '@media(max-width:760px){.dshMemoryGrid{grid-template-columns:1fr}.dshMemoryPanel{padding:18px}.dshMemorySection{gap:18px}.dshMemoryHeader .dshMemoryActions{width:100%}.dshMemoryButton{min-height:40px}}'
-    ].join('\n')
-    async function request(path, method = 'GET', body) {
-      const r = await fetch(API + path, { method, credentials: 'same-origin', cache: 'no-store', headers: { 'x-dsh-memory-request': '1', ...(body ? { 'content-type': 'application/json' } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) })
-      const value = await r.json().catch(() => ({}))
-      if (!r.ok) throw new Error(value.error || value.detail || '请求失败：HTTP ' + r.status)
-      return value
-    }
-    async function status() {
-      const r = await fetch('/dsh-memory-bridge/status', { credentials: 'same-origin', cache: 'no-store' })
-      if (!r.ok) throw new Error('无法读取记忆连接设置')
-      return r.json()
-    }
-    const phaseLabels = { idle: '尚无处理记录', judging: '正在判断反馈', not_triggered: '未触发提炼', queued: '等待处理', running: '正在提炼', extracting: '正在提炼', saving: '确认保存结果', saved: '已提炼并保存', succeeded: '已提炼并保存', no_changes: '处理完成，未新增', failed: '处理失败', unselected: '未启用记忆' }
-    const busyPhases = new Set(['judging', 'queued', 'running', 'extracting', 'saving'])
-    const stamp = value => value ? new Date(value).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }) : ''
-    const elapsed = value => { const seconds = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 1000)); return Number.isFinite(seconds) ? (seconds < 60 ? seconds + ' 秒' : Math.floor(seconds / 60) + ' 分 ' + seconds % 60 + ' 秒') : '' }
-    const hint = text => h('p', { className: 'dshMemoryHint' }, text)
-    const button = (text, onClick, disabled = false, primary = false) => h('button', { type: 'button', className: 'dshMemoryButton' + (primary ? ' primary' : ''), onClick, disabled }, text)
-    const field = (text, input, help) => h('label', { className: 'dshMemoryField' }, h('span', null, text), input, help ? hint(help) : null)
-    const badge = (text, phase) => h('span', { className: 'dshMemoryStatus ' + (['saved', 'succeeded', 'connected'].includes(phase) ? 'good' : busyPhases.has(phase) ? 'busy' : phase === 'failed' ? 'bad' : '') }, h('span', { className: 'dshMemoryDot', 'aria-hidden': true }), text)
-    const retryText = item => {
-      const state = item.retry_state || item.retry?.state
-      return ({ waiting_model: '等待记忆模型配置恢复，恢复后自动继续', scheduled: '已安排自动重试' + (item.next_retry_at || item.retry?.next_retry_at ? '：' + stamp(item.next_retry_at || item.retry.next_retry_at) : ''), queued: '已进入重试队列', exhausted: '自动重试已达上限，请修正原因后手动重试', blocked: '需要修正配置或重新确认会话选择', recovered_elsewhere: '该会话已在后续同步中恢复；此处保留原失败记录', resolved: '重试已完成' })[state] || ''
-    }
-    const diagnosisView = item => {
-      const d = item.diagnosis || item.retry?.diagnosis
-      return h(React.Fragment, null, retryText(item) ? hint(retryText(item)) : null,
-        d?.title ? h('div', { className: 'dshMemoryHint' }, h('strong', null, d.title), d.explanation ? h('p', null, d.explanation) : null,
-          ...(d.suggestions || []).map((text, i) => h('p', { key: i, style: { margin: '3px 0' } }, text))) : null,
-        item.request_id || item.operation_id ? h('details', { className: 'dshMemoryHint' }, h('summary', null, '排查编号'), h('span', { className: 'dshMemoryMono' }, item.request_id || item.operation_id)) : null)
-    }
-    function MemoryBridgeSection() {
-      const [data, setData] = React.useState({ workspaces: [], bindings: [], uploads: [] }), [connection, setConnection] = React.useState()
-      const [groups, setGroups] = React.useState([]), [processing, setProcessing] = React.useState({ jobs: [] })
-      const [workspace, setWorkspace] = React.useState(''), [sessions, setSessions] = React.useState([])
-      const [all, setAll] = React.useState(true), [selected, setSelected] = React.useState(new Set())
-      const [groupMode, setGroupMode] = React.useState('none'), [existingGroup, setExistingGroup] = React.useState(''), [newId, setNewId] = React.useState(''), [newName, setNewName] = React.useState('')
-      const [search, setSearch] = React.useState(''), [showJoined, setShowJoined] = React.useState(false), [showHistory, setShowHistory] = React.useState(false)
-      const [loading, setLoading] = React.useState(false), [saving, setSaving] = React.useState(false), [error, setError] = React.useState(''), [message, setMessage] = React.useState('')
-      const [urlDraft, setUrlDraft] = React.useState(''), [token, setToken] = React.useState(''), [savingConnection, setSavingConnection] = React.useState(false), [connectionDirty, setConnectionDirty] = React.useState(false)
-      const [checking, setChecking] = React.useState(false), [checked, setChecked] = React.useState(null)
-      const [retrying, setRetrying] = React.useState('')
-      const [autoEnabled, setAutoEnabled] = React.useState(false), [autoGroup, setAutoGroup] = React.useState(''), [autoDirty, setAutoDirty] = React.useState(false), [savingAuto, setSavingAuto] = React.useState(false)
-      const [hoveredPanel, setHoveredPanel] = React.useState(''), [focusedPanel, setFocusedPanel] = React.useState(''), [joinedSearch, setJoinedSearch] = React.useState('')
-      const activePanel = hoveredPanel || focusedPanel
-      const panelEvents = name => ({ tabIndex: 0, onPointerEnter: e => { if (e.pointerType === 'mouse') setHoveredPanel(name) }, onFocusCapture: e => { if (e.target.matches(':focus-visible')) setFocusedPanel(name) } })
-      const form = React.useRef(null)
-      const load = React.useCallback(async (includeGroups = false) => {
-        try {
-          const [d, c, p] = await Promise.all([request('catalog'), status(), request('processing' + (workspace ? '?workspace_id=' + encodeURIComponent(workspace) : '')).catch(e => ({ jobs: [], error: e.message }))])
-          setData(d); setConnection(c); setProcessing(p)
-          if (includeGroups && c.server?.token_configured) { try { setGroups((await request('groups')).groups) } catch (e) { setError(e.message) } }
-        } catch (e) { setError(e.message) }
-      }, [workspace])
-      React.useEffect(() => { void load(true); const timer = setInterval(() => load(), 4000); return () => clearInterval(timer) }, [load])
-      React.useEffect(() => { if (!connectionDirty && connection?.server?.url) setUrlDraft(connection.server.url) }, [connectionDirty, connection?.server?.url])
-      React.useEffect(() => { if (!autoDirty && data.auto_join) { setAutoEnabled(data.auto_join.enabled); setAutoGroup(data.auto_join.group_id || '') } }, [autoDirty, data.auto_join?.enabled, data.auto_join?.group_id])
-      React.useEffect(() => {
-        let active = true; setSessions([])
-        if (!workspace) return () => { active = false }
-        setLoading(true)
-        const read = () => request('catalog/' + encodeURIComponent(workspace)).then(d => { if (active) setSessions(d.sessions) }).catch(e => { if (active) setError(e.message) }).finally(() => { if (active) setLoading(false) })
-        void read(); const timer = setInterval(read, 8000)
-        return () => { active = false; clearInterval(timer) }
-      }, [workspace])
-      function choose(id) {
-        const w = data.workspaces.find(x => x.dsh_workspace_id === id), b = w && data.bindings.find(x => x.workspace_id === w.workspace_id)
-        const defaultGroup = b ? b.group_id : data.auto_join?.group_id || ''
-        setWorkspace(id); setExistingGroup(defaultGroup || ''); setGroupMode(defaultGroup ? 'existing' : 'none')
-        setAll(b?.session_selection !== 'selected'); setSelected(new Set(b?.session_ids || [])); setError(''); setMessage('')
-      }
-      function check(id, value) { const next = new Set(all ? sessions.map(x => x.session_id) : selected); value ? next.add(id) : next.delete(id); setSelected(next); setAll(false) }
-      const groupId = groupMode === 'new' ? newId.trim().toLowerCase() : groupMode === 'existing' ? existingGroup : ''
-      const idError = groupMode === 'new' && groupId && !/^[a-z0-9][a-z0-9._:-]{2,127}$/.test(groupId) ? '组编号不支持中文。请使用 3–128 位小写英文字母、数字或 . _ : -，并以字母或数字开头。' : ''
-      async function join(e) {
-        e.preventDefault(); if (idError) { setError(idError); return }
-        setSaving(true); setError(''); setMessage('')
-        try {
-          const result = await request('selection', 'PUT', { dsh_workspace_id: workspace, session_selection: all ? 'all' : 'selected', session_ids: all ? sessions.map(s => s.session_id) : [...selected], group_id: groupId, ...(groupMode === 'new' && newName.trim() ? { group_name: newName.trim() } : {}) })
-          setMessage(result.awaiting_group ? '工作区已加入，当前待绑定记忆组。会话选择已保留，绑定后才会上传并启用记忆。' : '记忆组已绑定，历史会话开始处理。请在“记忆处理状态”确认是否完成保存。')
-          if (groupMode === 'new') { setExistingGroup(groupId); setGroupMode('existing'); setNewId(''); setNewName('') }
-          await load(true)
-        } catch (e) { setError(e.message) } finally { setSaving(false) }
-      }
-      async function remove(b) {
-        if (!window.confirm('移除“' + b.name + '”的记忆设置？线上记忆、DSH 工作区及聊天记录都会保留。')) return
-        try { await request('workspaces/' + encodeURIComponent(b.workspace_id), 'DELETE'); setMessage('已移除记忆设置，线上记忆、工作区及聊天记录保留；不会被自动加回，可手动重新加入。'); await load() } catch (e) { setError(e.message) }
-      }
-      async function saveConnection() {
-        setSavingConnection(true); setError('')
-        try { await request('registry', 'PUT', { server_url: urlDraft, ...(token.trim() ? { api_token: token.trim() } : {}) }); setToken(''); setConnectionDirty(false); setChecked(null); setMessage('连接配置已保存，可以检查连接。'); await load(true) }
-        catch (e) { setError(e.message) } finally { setSavingConnection(false) }
-      }
-      async function checkConnection() {
-        setChecking(true); setError('')
-        try { await request('info'); setChecked(true); setMessage('线上记忆服务连接正常。'); await load(true) }
-        catch (e) { setChecked(false); setError(e.message) } finally { setChecking(false) }
-      }
-      function openManagement() {
-        const url = managementUrl(connection?.server?.url)
-        if (!url) { setError('请先保存有效的服务器地址。'); return }
-        try {
-          const sidebar = hostContext?.get?.('sidebarRight')
-          const tabs = hostContext?.get?.('sidebarRightTabs')
-          if (!sidebar?.openTab || !tabs?.get('browser')) {
-            window.open(url, '_blank', 'noopener,noreferrer')
-            return
-          }
-          sidebar.openTab('browser', { params: { url }, revealIfOpened: false })
-          setError(''); setMessage('记忆管理已在 DSH 右侧浏览器打开，关闭设置即可查看。')
-        } catch (e) { setError('内置浏览器未能打开：' + e.message + '。可点击“系统浏览器打开”。') }
-      }
-      async function retry(id) {
-        setRetrying(id || 'all'); setError(''); setMessage('')
-        try {
-          const result = await request(id ? 'uploads/' + encodeURIComponent(id) + '/retry' : 'retries', 'POST', {})
-          const blocked = result.blocked || []
-          setMessage(id ? '已检查并提交尚未恢复的失败会话；已完成的会话不会重复上传。' : '已提交 ' + result.retried.length + ' 批失败会话。' + (blocked.length ? '另有 ' + blocked.length + ' 批需要重新确认原账号或会话选择。' : ''))
-          if (blocked.length) setError(blocked.map(x => x.error).join('；'))
-          setShowHistory(true); await load()
-        } catch (e) { setError(e.message) } finally { setRetrying('') }
-      }
-      async function saveAutoJoin(e) {
-        e.preventDefault(); setSavingAuto(true); setError(''); setMessage('')
-        try {
-          await request('auto-join', 'PUT', { enabled: autoEnabled, group_id: autoGroup })
-          setAutoDirty(false); setMessage(autoEnabled ? '自动加入已开启：未手动设置和今后新建的工作区将加入指定组，全部会话在后台处理。' : '自动加入已关闭，已加入工作区保留原有绑定。')
-          await load(true)
-        } catch (e) { setError(e.message) } finally { setSavingAuto(false) }
-      }
-      const checkbox = (text, isChecked, change) => h('label', { className: 'dshMemoryCheck' }, h('input', { type: 'checkbox', checked: isChecked, disabled: saving, onChange: e => change(e.target.checked) }), h('span', null, text))
-      const step = (n, text) => h('p', { className: 'dshMemoryStep' }, h('b', null, n), text)
-      const query = search.trim().toLowerCase(), matches = w => !query || (w.name + ' ' + w.path).toLowerCase().includes(query)
-      const workspaces = data.workspaces.filter(w => matches(w) || w.dsh_workspace_id === workspace)
-      const bindings = [...data.bindings].reverse().filter(w => !joinedSearch.trim() || (w.name + ' ' + w.path + ' ' + (w.group_id || '')).toLowerCase().includes(joinedSearch.trim().toLowerCase())), visibleBindings = showJoined ? bindings : bindings.slice(0, 5)
-      const selectedWorkspace = data.workspaces.find(w => w.dsh_workspace_id === workspace)
-      const scopedBinding = selectedWorkspace && data.bindings.find(b => b.workspace_id === selectedWorkspace.workspace_id)
-      const groupNames = new Map(groups.map(g => [g.group_id, g.name]))
-      const groupTitle = id => (groupNames.get(id) || id) + (groupNames.get(id) && groupNames.get(id) !== id ? ' · ' + id : '')
-      const boundGroups = new Set(data.bindings.filter(b => b.mode === 'server').map(b => b.group_id))
-      const remoteById = new Map((processing.jobs || []).map(j => [j.job_id, j]))
-      const completed = new Set(['succeeded', 'saved', 'no_changes'])
-      const localActivities = (connection?.sessions || []).filter(s => boundGroups.has(s.group_id) && s.processing && s.processing.status !== 'idle' && (!selectedWorkspace || scopedBinding && s.group_id === scopedBinding.group_id)).map(s => {
-        const remote = remoteById.get(s.processing.job_id)
-        const binding = data.bindings.find(b => b.workspace_id === s.workspace_id && b.group_id === s.group_id)
-        // A fresh terminal server result must not be hidden by an old local poll.
-        const useRemote = remote && !completed.has(s.processing.status)
-        const activity = useRemote ? { ...s.processing, ...remote, message: undefined, error: remote.error } : s.processing
-        return { ...activity, id: s.session_id, group_id: s.group_id,
-          title: remote?.workspace_name || binding?.name || '会话处理', session_title: remote?.session_title || s.title,
-          status: activity.status === 'succeeded' ? (activity.new_memory_count ? 'saved' : 'no_changes') : activity.status,
-          read_error: s.last_read_ok === false ? s.last_read_error : null }
-      })
-      const knownJobs = new Set(localActivities.map(x => x.job_id).filter(Boolean))
-      const remoteActivities = (processing.jobs || []).filter(j => boundGroups.has(j.group_id) && !knownJobs.has(j.job_id) && (!selectedWorkspace || scopedBinding && j.group_id === scopedBinding.group_id)).map(j => ({ ...j, id: j.job_id, title: j.workspace_name || j.title || '组内历史记录（来源未识别）', status: j.status === 'succeeded' ? (j.new_memory_count ? 'saved' : 'no_changes') : j.status }))
-      const activities = [...localActivities, ...remoteActivities].sort((a, b) => Number(busyPhases.has(b.status)) - Number(busyPhases.has(a.status)) || new Date(b.updated_at || 0) - new Date(a.updated_at || 0)).slice(0, 8)
-      const selectedCount = all ? sessions.length : selected.size
-      const connectionChanged = connectionDirty || Boolean(token.trim())
-      const uploadCard = job => h('div', { key: job.id, className: 'dshMemoryItem' },
-        h('div', { className: 'dshMemoryRow' }, h('strong', null, job.workspace_name || data.bindings.find(b => b.workspace_id === job.workspace_id)?.name || groupTitle(job.group_id)), badge(({ queued: '等待上传', running: '历史处理中', succeeded: '历史处理完成', partial_failed: '部分会话失败', failed: '上传失败' })[job.status] || job.status, job.status === 'partial_failed' ? 'failed' : job.status)),
-        hint(groupTitle(job.group_id) + ' · ' + job.completed + ' / ' + job.total + ' 个会话 · 累计新增 ' + (job.new_memory_count || 0) + ' 条'),
-        h('progress', { className: 'dshMemoryProgress', value: job.completed, max: Math.max(job.total, 1), 'aria-label': '历史会话上传进度' }),
-        job.status === 'succeeded' && !job.new_memory_count ? hint('判断已完成，没有新增：未发现有效反馈或相同内容已保存。') : null,
-        job.error ? h('p', { className: 'dshMemoryHint dshMemoryError' }, job.error) : null,
-        ...job.sessions.filter(s => s.status === 'failed').map(s => h('div', { key: s.session_id },
-          h('details', { className: 'dshMemoryHint' }, h('summary', null, s.retry_state === 'recovered_elsewhere' ? '原失败记录（已恢复）' : '失败会话 · 已尝试 ' + (s.attempts || 1) + ' 次'), h('span', { className: 'dshMemoryMono' }, s.session_id), h('p', null, s.error)), diagnosisView(s))),
-        job.sessions.some(s => s.status === 'failed' && s.retry_state !== 'recovered_elsewhere') ? button(retrying === job.id ? '正在提交…' : '重试本批失败会话', () => retry(job.id), Boolean(retrying) || ['queued', 'running'].includes(job.status)) : null,
-        h('details', { className: 'dshMemoryHint' }, h('summary', null, '任务编号'), h('span', { className: 'dshMemoryMono' }, job.id)))
-      return h('section', { className: 'dshMemorySection' },
-        h('div', { className: 'dshMemoryRow dshMemoryHeader' }, h('div', null, h('h2', null, '记忆'), hint('选择哪些会话共享经验，并查看每次记忆是否真正保存。')), h('div', { className: 'dshMemoryActions' }, button('刷新', () => load(true)), button('记忆管理', openManagement, !managementUrl(connection?.server?.url)), h('a', { className: 'dshMemoryButton', href: managementUrl(connection?.server?.url), target: '_blank', rel: 'noopener noreferrer' }, '系统浏览器打开'))),
-        error ? h('p', { role: 'alert', className: 'dshMemoryNotice dshMemoryError' }, error) : null,
-        message ? h('p', { role: 'status', className: 'dshMemoryNotice' }, message) : null,
-        h('section', { className: 'dshMemoryPanel', 'aria-label': '线上服务连接' },
-          h('div', { className: 'dshMemoryRow dshMemoryPanelHead' }, h('div', null, h('h3', null, '线上服务连接'), hint('先保存连接配置，再检查服务是否可访问。')), h('div', { className: 'dshMemoryActions' }, badge(checking ? '正在检查' : checked === true ? '连接正常' : checked === false ? '连接失败' : '尚未检查', checking ? 'judging' : checked === true ? 'connected' : checked === false ? 'failed' : 'idle'), button(checking ? '检查中…' : '检查连接', checkConnection, checking || savingConnection || connectionChanged || !connection?.server?.token_configured))),
-          h('div', { className: 'dshMemoryGrid' }, field('服务器地址', h('input', { className: 'dshMemoryInput', type: 'url', value: urlDraft, onChange: e => { setUrlDraft(e.target.value); setConnectionDirty(true); setChecked(null) }, placeholder: 'http://服务器地址:端口' })), field('访问密钥', h('input', { className: 'dshMemoryInput', type: 'password', autoComplete: 'new-password', value: token, onChange: e => { setToken(e.target.value); setChecked(null) }, placeholder: connection?.server?.token_configured ? '已保存，留空则保留' : '填写 Memory 访问密钥' }))),
-          h('div', { className: 'dshMemoryActions' }, button(savingConnection ? '保存中…' : '保存连接配置', saveConnection, savingConnection || !urlDraft.trim()), hint(connectionChanged ? '配置有修改，保存后才能检查新连接。' : '完整密钥可在网页“访问密钥”列表中再次查看、复制；它与聊天模型的密钥不同。')),
-          h('p', { className: 'dshMemoryHint' }, '点击上方“记忆管理”，在同一网页注册、生成密钥并管理记忆。每个密钥对应独立空间，切换密钥后请重新确认工作区与会话。')),
-        h('div', { className: 'dshMemoryDashboard', 'data-active': activePanel || 'balanced', onPointerLeave: () => setHoveredPanel(''), onBlurCapture: e => { if (!e.currentTarget.contains(e.relatedTarget)) setFocusedPanel('') } },
-          h('section', { className: 'dshMemoryPanel dshMemoryDashboardPanel dshMemoryProcessingPanel', 'aria-label': '记忆处理状态', ...panelEvents('status') },
-          h('div', { className: 'dshMemoryRow dshMemoryPanelHead' }, h('div', null, h('h3', null, '记忆处理状态'), hint(scopedBinding ? '当前组：' + (scopedBinding.group_id || '待绑定') : '最近的反馈与提炼结果')), h('span', { className: 'dshMemoryDashboardNudge', 'aria-hidden': true }, '移入展开 ↔')),
-          h('div', { className: 'dshMemoryDashboardBody' }, activities.length ? h('div', null, ...activities.map(a => h('div', { key: a.id, className: 'dshMemoryItem' }, h('div', { className: 'dshMemoryRow' }, h('strong', null, a.title), badge(phaseLabels[a.status] || a.status, a.status)), a.session_title ? hint(a.session_title) : null, h('div', { className: 'dshMemoryMeta' }, h('span', null, groupTitle(a.group_id)), h('span', null, busyPhases.has(a.status) ? '已等待 ' + elapsed(a.started_at || a.created_at || a.updated_at) : stamp(a.completed_at || a.updated_at)), ['saved', 'no_changes'].includes(a.status) ? h('span', null, '新增 ' + (a.new_memory_count || 0) + ' 条') : null), hint(a.message || (a.status === 'saved' ? '已保存到服务器，可供同组后续会话读取。' : busyPhases.has(a.status) ? '服务器处理中，尚未保存完成。' : '')), a.status === 'not_triggered' ? hint('未触发与处理慢不同：本轮没有生成提炼任务。') : null, a.error ? h('p', { className: 'dshMemoryHint dshMemoryError' }, a.error) : null, a.read_error ? h('p', { className: 'dshMemoryHint dshMemoryError' }, '最新读取失败，本轮回答可能未使用记忆：' + a.read_error) : null, diagnosisView(a), a.reason ? h('details', { className: 'dshMemoryHint' }, h('summary', null, '查看判断说明'), a.reason) : null))) : h('p', { className: 'dshMemoryEmpty' }, scopedBinding?.mode === 'pending' ? '这个工作区还没有绑定记忆组。' : '暂无处理记录。完成对话后，后台会判断是否需要提炼。')),
-          processing.error && connection?.server?.token_configured ? hint('服务器提炼记录暂不可用：' + processing.error) : null,
-          h('div', { className: 'dshMemoryDashboardFooter' }, hint('每 4 秒刷新。以“已提炼并保存”和实际新增内容确认结果。'))),
-          h('section', { className: 'dshMemoryPanel dshMemoryDashboardPanel dshMemoryWorkspacePanel', 'aria-label': '已加入的工作区', ...panelEvents('workspaces') }, h('div', { className: 'dshMemoryRow dshMemoryPanelHead' }, h('div', null, h('h3', null, '已加入的工作区'), hint(bindings.length + ' 个工作区')), h('span', { className: 'dshMemoryDashboardNudge', 'aria-hidden': true }, '移入展开 ↔')),
-          h('input', { type: 'search', className: 'dshMemoryInput dshMemoryDashboardSearch', value: joinedSearch, onChange: e => setJoinedSearch(e.target.value), placeholder: '搜索名称、路径或组号', 'aria-label': '搜索已加入的工作区' }),
-          h('div', { className: 'dshMemoryDashboardBody' }, visibleBindings.length ? h('div', null, ...visibleBindings.map(b => h('div', { className: 'dshMemoryItem', key: b.workspace_id }, h('div', { className: 'dshMemoryRow' }, h('strong', null, b.name), h('div', { className: 'dshMemoryActions' }, badge(b.mode === 'pending' ? '待绑定记忆组' : '已启用记忆', b.mode === 'pending' ? 'idle' : 'connected'), button(b.mode === 'pending' ? '绑定记忆组' : '修改选择', () => { const w = data.workspaces.find(w => w.workspace_id === b.workspace_id); if (w) { choose(w.dsh_workspace_id); form.current?.scrollIntoView({ behavior: 'smooth' }) } else setError('该工作区已不在 DSH 中，可刷新列表或移除旧设置。') }), button('移除', () => remove(b)))), h('p', { className: 'dshMemoryHint dshMemoryDashboardPath', title: b.path }, b.path), hint((b.group_id ? '记忆组：' + groupTitle(b.group_id) + ' · ' : '') + (b.session_selection === 'selected' ? '指定 ' + b.session_ids.length + ' 个会话' : '全部会话，含以后新建的会话'))))) : h('p', { className: 'dshMemoryEmpty' }, joinedSearch ? '没有匹配的已加入工作区。' : '还没有已加入的工作区。')),
-          h('div', { className: 'dshMemoryDashboardFooter' }, bindings.length > 5 ? button(showJoined ? '收起列表' : '显示全部 ' + bindings.length + ' 个工作区', () => setShowJoined(!showJoined)) : hint('修改选择后，在下方确认记忆组与会话。')))),
-        SHOW_AUTO_JOIN_SETTINGS && h('form', { className: 'dshMemoryPanel dshMemoryAutoJoin', onSubmit: saveAutoJoin, 'aria-label': '自动加入工作区' },
-          h('div', { className: 'dshMemoryRow dshMemoryPanelHead' }, h('h3', null, '自动加入工作区'), badge(({ disabled: '已关闭', ready: '已开启', running: '正在加入', paused: '需要重新确认', failed: '部分加入失败' })[data.auto_join?.status || 'disabled'], data.auto_join?.status === 'ready' ? 'connected' : data.auto_join?.status === 'running' ? 'running' : data.auto_join?.status === 'failed' ? 'failed' : 'idle')),
-          h('label', { className: 'dshMemoryCheck' }, h('input', { type: 'checkbox', checked: autoEnabled, disabled: savingAuto, onChange: e => { setAutoEnabled(e.target.checked); setAutoDirty(true) } }), h('span', null, '自动加入未手动设置及今后新建的工作区')),
-          field('默认记忆组', h('select', { className: 'dshMemoryInput', value: autoGroup, disabled: savingAuto, onChange: e => { setAutoGroup(e.target.value); setAutoDirty(true) }, 'aria-label': '自动加入默认记忆组' }, h('option', { value: '' }, '请选择默认记忆组'), ...groups.filter(g => g.role === 'owner').map(g => h('option', { key: g.group_id, value: g.group_id }, (g.name || g.group_id) + ' / ' + g.group_id)))),
-          hint('开启后，全部会话（含历史和未来会话）会在后台处理；只收集会话，不扫描文件。手动设置和手动移除优先，移除后不会自动加回。'),
-          hint('修改默认组只影响后续加入，关闭开关不会解除已有绑定。默认组也会用于手动选择新工作区时的预选。'),
-          data.auto_join?.message ? h('p', { className: 'dshMemoryHint dshMemoryError' }, data.auto_join.message) : null,
-          !groups.length ? hint('请先在“记忆管理”中创建记忆组，然后刷新此页。') : null,
-          h('div', { className: 'dshMemoryActions' }, h('button', { type: 'submit', className: 'dshMemoryButton primary', disabled: savingAuto || connectionChanged || autoEnabled && (!groups.some(g => g.group_id === autoGroup && g.role === 'owner') || !connection?.server?.token_configured) }, savingAuto ? '正在保存…' : '保存自动加入设置'), hint(autoDirty ? '修改后保存才会生效。' : '后台每 10 秒检查一次；新会话开始时会立即检查。'))),
-        h('form', { className: 'dshMemoryPanel', onSubmit: join, ref: form },
-          h('div', { className: 'dshMemoryFormSection' }, step(1, '选择工作区与会话'),
-            h('div', { className: 'dshMemoryStack' }, h('input', { type: 'search', className: 'dshMemoryInput', value: search, onChange: e => setSearch(e.target.value), placeholder: '搜索工作区名称或路径', 'aria-label': '搜索工作区' }), h('select', { className: 'dshMemoryInput', 'aria-label': '选择 DSH 工作区', value: workspace, onChange: e => choose(e.target.value), disabled: saving }, h('option', { value: '' }, '请选择 DSH 中已有的工作区'), ...workspaces.map(w => h('option', { key: w.dsh_workspace_id, value: w.dsh_workspace_id }, w.name + ' · ' + w.session_count + ' 个会话')))),
-            hint(selectedWorkspace?.path || '需要新工作区时，先在 DSH 左侧添加。这里不会另建工作区或会话。'),
-            !workspace ? null : loading ? hint('正在读取会话列表…') : h('div', { style: { marginTop: 16 } }, checkbox('全部会话，包含以后新建的会话', all, value => { setAll(value); setSelected(new Set(value ? sessions.map(x => x.session_id) : [])) }),
-              sessions.length ? h('div', { className: 'dshMemorySessions', 'aria-label': '会话选择' }, ...sessions.map(s => h('div', { key: s.session_id, className: 'dshMemorySessionRow' }, checkbox(s.title, all || selected.has(s.session_id), value => check(s.session_id, value)), h('details', null, h('summary', null, '会话编号'), h('span', { className: 'dshMemoryMono' }, s.session_id))))) : hint('还没有会话。保持“全部会话”，以后新建的会话会自动加入选择。'),
-              hint('已选择 ' + selectedCount + ' / ' + sessions.length + ' 个会话。未选择的会话不上传，也不启用本组记忆。'))),
-          h('div', { className: 'dshMemoryFormSection dshMemoryStack' }, step(2, '选择记忆组，也可以稍后绑定'),
-            field('记忆组', h('select', { className: 'dshMemoryInput', value: groupMode, onChange: e => setGroupMode(e.target.value), disabled: saving }, h('option', { value: 'none' }, '暂不绑定，先加入工作区'), h('option', { value: 'existing' }, '使用已有记忆组'), h('option', { value: 'new' }, '创建新记忆组'))),
-            groupMode === 'existing' ? h(React.Fragment, null, field('已有记忆组', h('select', { className: 'dshMemoryInput', value: existingGroup, onChange: e => setExistingGroup(e.target.value), disabled: saving }, h('option', { value: '' }, '选择当前账号有权限的组'), ...(existingGroup && !groups.some(g => g.group_id === existingGroup) ? [h('option', { key: existingGroup, value: existingGroup }, existingGroup)] : []), ...groups.map(g => h('option', { key: g.group_id, value: g.group_id }, g.name + (g.name !== g.group_id ? ' · ' + g.group_id : ''))))), hint('绑定后即可读取这个组已有的记忆；本次选择的历史会话也会上传至该组。')) : null,
-            groupMode === 'new' ? h(React.Fragment, null, h('div', { className: 'dshMemoryGrid' }, field('Group ID（组编号）', h('input', { className: 'dshMemoryInput', value: newId, onChange: e => setNewId(e.target.value), placeholder: '例如 team-alpha', maxLength: 128, autoCapitalize: 'none', spellCheck: false, 'aria-invalid': Boolean(idError), disabled: saving }), '不支持中文。3–128 位小写英文字母、数字或 . _ : -，以字母或数字开头。'), field('显示名称（选填）', h('input', { className: 'dshMemoryInput', value: newName, onChange: e => setNewName(e.target.value), placeholder: '例如 项目讨论组', maxLength: 120, disabled: saving }), '显示名称可以使用中文。')), idError ? h('p', { className: 'dshMemoryHint dshMemoryError', role: 'alert' }, idError) : null) : null,
-            groupMode === 'none' ? h('p', { className: 'dshMemoryNotice' }, '先保留工作区和会话选择。当前不上传、不读取记忆；之后可在“已加入的工作区”中绑定记忆组。') : hint('记忆按组共享。历史上传后仍需判断反馈，并不保证每句话都生成记忆。')),
-          h('div', { className: 'dshMemoryActions dshMemoryFooter' }, h('button', { type: 'submit', className: 'dshMemoryButton primary', disabled: saving || loading || !workspace || Boolean(idError) || groupMode !== 'none' && (!groupId || !connection?.server?.token_configured) || !all && !selected.size }, saving ? '正在保存…' : groupMode === 'none' ? '加入工作区，稍后绑定' : groupMode === 'new' ? '创建记忆组并加入' : '绑定记忆组并上传'), hint(groupMode === 'none' ? '这一步只保存选择。' : '保存完成状态以后台任务结果为准。'))),
-        data.uploads.length ? h('section', { className: 'dshMemoryPanel' }, h('div', { className: 'dshMemoryRow' }, h('h3', null, '会话处理与失败重试'), h('div', { className: 'dshMemoryActions' }, button(retrying === 'all' ? '正在提交…' : '重试全部失败会话', () => retry(), Boolean(retrying)), button(showHistory ? '收起记录' : '查看最近记录', () => setShowHistory(!showHistory)))),
-          hint('临时错误最多自动重试 5 次。缺少模型时暂停等待；DSH 与插件运行期间，配置恢复后自动继续。账号、记忆组或选择变化时需要重新确认。'),
-          showHistory ? h('div', null, ...data.uploads.slice().reverse().map(uploadCard)) : hint('历史上传结果与后续自动提炼分别记录。')) : null,
-        hint('已选会话的处理输入、模型响应、结果与错误会记录到公司服务，供管理员排查；密码和访问密钥会脱敏。' + (connection?.diagnostics?.last_error ? '日志待补传：' + connection.diagnostics.last_error : connection?.diagnostics?.pending_events ? '另有 ' + connection.diagnostics.pending_events + ' 条本地记录等待上传。' : '')))
-    }
-    function apply(ctx) {
-      hostContext = ctx
-      ctx.effect(() => {
-        let style = document.querySelector('style[data-plugin-css="dsh-memory-bridge"]')
-        if (!style) { style = document.createElement('style'); style.dataset.pluginCss = 'dsh-memory-bridge'; document.head.appendChild(style) }
-        style.textContent = css
-        return () => style.remove()
-      })
-      ctx.effect(() => ctx.locale.register('settings.memoryBridge', { zh: { nav: '记忆' }, en: { nav: 'Memory' } }), 'memory settings copy')
-      const t = ctx.locale.bind('settings.memoryBridge')
-      ctx.slots.inject('settings.section', () => ctx.slots.register({ name: 'settings.section', id: 'memory-bridge', order: 45, label: () => t('nav') }, MemoryBridgeSection))
-    }
-    return { apply, inject: ['slots', 'locale'] }
+window.__ModuleLoader__.load({ id: "dsh-memory-bridge-profile", factory: (require) => {
+  let hostContext;
+  const React = require("react"), h = React.createElement, API = "/dsh-memory-bridge/manager/";
+  const { createPortal } = require("react-dom");
+  async function api(path, method = "GET", body) {
+    const r = await fetch(API + path, { method, credentials: "same-origin", cache: "no-store", headers: { "x-dsh-memory-request": "1", ...body ? { "content-type": "application/json" } : {} }, ...body ? { body: JSON.stringify(body) } : {} });
+    const d = await r.json();
+    if (!r.ok) throw Error(d.error || "请求失败");
+    return d;
   }
-})
+  // Hide only Evolith-owned message IDs in the native Chat projection.
+  // Session events and model inputs remain intact, including existing history.
+  const controlStyles = `
+[data-chat-node-key^="13:input-messagedsh-interval-memory:"]{display:none!important}
+.dsh-evolith-control{display:inline-flex;align-items:center;gap:3px;font-size:13px;line-height:1;color:var(--dsw-alias-label-secondary,#5b6472);white-space:nowrap;-webkit-app-region:no-drag}
+.dsh-evolith-switch,.dsh-evolith-help{appearance:none;box-sizing:border-box;border:0;background:transparent;box-shadow:none;margin:0;font:inherit;color:inherit;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;border-radius:6px;min-width:0;min-height:0}
+.dsh-evolith-switch{gap:7px;padding:5px 4px;font-weight:500;line-height:18px}
+.dsh-evolith-switch:hover:not(:disabled),.dsh-evolith-help:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(115,126,145,.09))}
+.dsh-evolith-switch:focus-visible,.dsh-evolith-help:focus-visible{outline:2px solid var(--dsw-focus-ring-color,#3b82f6);outline-offset:2px}
+.dsh-evolith-switch:disabled{cursor:default;opacity:.55}
+.dsh-evolith-track{display:block;position:relative;flex:none;width:27px;height:16px;border-radius:999px;background:var(--dsw-alias-label-quaternary,#c5ccd7);transition:background 150ms ease}
+.dsh-evolith-switch[aria-checked=true] .dsh-evolith-track{background:var(--dsw-alias-state-business-primary,#397af5)}
+.dsh-evolith-thumb{position:absolute;left:2px;top:2px;display:block;width:12px;height:12px;border-radius:50%;background:#fff;box-shadow:0 1px 3px #0002;transition:transform 150ms ease}
+.dsh-evolith-switch[aria-checked=true] .dsh-evolith-thumb{transform:translateX(11px)}
+.dsh-evolith-help{width:23px;height:28px;padding:0;color:var(--dsw-alias-label-tertiary,#8b94a2);cursor:help}
+.dsh-evolith-help:hover,.dsh-evolith-help[aria-expanded=true]{color:var(--dsw-alias-label-primary,#3e495b)}
+.dsh-evolith-tooltip{position:fixed;z-index:2147483647;box-sizing:border-box;width:320px;max-width:calc(100vw - 24px);max-height:calc(100dvh - 24px);overflow-y:auto;padding:14px 16px;border:1px solid var(--dsw-alias-border-l1,#e1e6ed);border-radius:12px;background:var(--dsw-alias-bg-base,#fff);color:var(--dsw-alias-label-primary,#283344);box-shadow:0 8px 30px #1b2b491c;font-family:inherit;font-size:13px;font-weight:400;line-height:1.65;white-space:normal;overflow-wrap:anywhere;-webkit-app-region:no-drag}
+.dsh-evolith-tooltip-title{font-weight:600;font-size:13px;margin:0 0 7px}
+.dsh-evolith-tooltip p{margin:0}
+.dsh-evolith-privacy{margin:10px 0;padding:10px 11px;border-radius:8px;background:var(--dsw-alias-state-business-tertiary,#f0f5fe)}
+.dsh-evolith-privacy strong{display:block;margin-bottom:3px;font-weight:600}
+.dsh-evolith-tooltip-foot{color:var(--dsw-alias-label-secondary,#647084);font-size:12px}
+.dsh-evolith-verified-panel{height:100%;box-sizing:border-box;overflow:auto;padding:20px 16px;color:var(--dsw-alias-label-primary,#27364c);background:var(--dsw-alias-bg-base,#fff);font-size:13px;line-height:1.65}
+.dsh-evolith-verified-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.dsh-evolith-verified-heading h2{font-size:15px;margin:0 0 3px;font-weight:600}.dsh-evolith-verified-muted,.dsh-evolith-verified-meta{color:var(--dsw-alias-label-tertiary,#7b8594);font-size:12px}
+.dsh-evolith-verified-refresh{border:1px solid var(--dsw-alias-border-l1,#e1e6ed);border-radius:7px;background:transparent;color:inherit;font:inherit;padding:3px 9px;cursor:pointer}.dsh-evolith-verified-explanation{color:var(--dsw-alias-label-secondary,#647084);font-size:12px;margin:14px 0 18px}.dsh-evolith-verified-empty{border:1px dashed var(--dsw-alias-border-l1,#e1e6ed);border-radius:10px;padding:18px 14px;margin-top:20px}.dsh-evolith-verified-empty p{font-size:12px;color:var(--dsw-alias-label-secondary,#647084)}
+.dsh-evolith-verified-card{border:1px solid var(--dsw-alias-border-l1,#e1e6ed);border-radius:10px;padding:16px;margin:12px 0;overflow-wrap:anywhere}.dsh-evolith-verified-status{display:flex;align-items:center;gap:6px;color:#168058;font-size:11px;font-weight:500}.dsh-evolith-verified-round{margin-left:auto;color:var(--dsw-alias-label-tertiary,#7b8594);font-weight:400}.dsh-evolith-verified-eyebrow{font-size:11px;color:var(--dsw-alias-label-tertiary,#7b8594);margin-top:12px}.dsh-evolith-verified-title{font-size:15px;line-height:1.6;font-weight:600;margin:3px 0 13px;color:var(--dsw-alias-label-primary,#27364c)}.dsh-evolith-verified-summary{padding:0 0 0 10px;border-left:2px solid var(--dsw-alias-border-l1,#dce5f2)}.dsh-evolith-verified-summary strong{font-size:11px;font-weight:500;color:var(--dsw-alias-label-secondary,#647084)}.dsh-evolith-verified-summary p{margin:4px 0;font-size:13px;line-height:1.65;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}.dsh-evolith-verified-details{margin-top:10px;border-top:1px solid var(--dsw-alias-border-l1,#e1e6ed);padding-top:10px;font-size:12px}.dsh-evolith-verified-details summary{cursor:pointer;color:var(--dsw-alias-label-tertiary,#7b8594)}.dsh-evolith-verified-details pre{white-space:pre-wrap;max-height:180px;overflow:auto;background:var(--dsw-alias-state-business-tertiary,#f0f5fe);padding:9px;border-radius:6px;font-size:11px}.dsh-evolith-verified-card-title{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}.dsh-evolith-verified-card-title strong{font-size:12px;font-weight:600}.dsh-evolith-verified-badge{font-size:11px;background:#e8f6ef;color:#16734c;border-radius:5px;padding:1px 6px;white-space:nowrap}.dsh-evolith-verified-meta{margin-top:5px}.dsh-evolith-verified-card dl{margin:12px 0 0}.dsh-evolith-verified-card dt{font-size:12px;color:var(--dsw-alias-label-secondary,#647084);margin-top:9px}.dsh-evolith-verified-card dd{margin:3px 0 0}.dsh-evolith-verified-card blockquote{margin:5px 0;padding:7px 10px;border-left:2px solid #75a5ef;background:var(--dsw-alias-state-business-tertiary,#f0f5fe);white-space:pre-wrap}.dsh-evolith-verified-original{font-size:12px;margin-top:10px}.dsh-evolith-verified-original summary{cursor:pointer;color:var(--dsw-alias-label-secondary,#647084)}.dsh-evolith-verified-original p{white-space:pre-wrap}.dsh-evolith-verified-error{color:#b42318}
+@media(prefers-reduced-motion:reduce){.dsh-evolith-track,.dsh-evolith-thumb{transition:none}}
+`;
+  const verificationKind='evolith-verified-memory', verificationTab='dsh-memory-bridge-profile.verified-memory';
+  function openVerifications(sessionId){
+    const side=hostContext?.get?.('sidebarRight'),tabs=hostContext?.get?.('sidebarRightTabs');
+    if(!sessionId||!tabs?.get(verificationKind)||!side?.openTabIn)return;
+    side.openTabIn(sessionId,verificationKind,{revealIfOpened:true});
+  }
+  const openedVerificationTurns=new Set();
+  function watchVerificationResults(source,onVerified){
+    const calls=new Map(),seen=new Set();let currentTurn=0,turnOpen=false;
+    const observe=(event,notify)=>{
+      const eventTurn=event.data?.turn;
+      if(Number.isInteger(eventTurn)&&eventTurn>currentTurn){currentTurn=eventTurn;turnOpen=true;}
+      if(event.type==='turn/start'){currentTurn=eventTurn;turnOpen=true;}
+      if(event.type==='turn/end'&&event.data?.turn===currentTurn)turnOpen=false;
+      const message=event.data?.message||event.data;
+      if(event.type==='assistant/message')for(const block of message?.content||[])if(block.type==='tool-call')calls.set(block.id,block.name);
+      if(event.type!=='tool/result'||seen.has(event.seq))return;
+      seen.add(event.seq);
+      if(!notify||!turnOpen||event.data?.turn!==currentTurn||message?.isError)return;
+      if(calls.get(message?.toolCallId||message?.source?.callId)!=='evolith_record_verified_memory')return;
+      try{
+        const result=JSON.parse((message.content||[]).filter(b=>b.type==='text').map(b=>b.text).join(''));
+        if(result.recorded===true&&result.status==='actor_verified_with_evidence'&&typeof result.record_id==='string')onVerified(currentTurn);
+      }catch{}
+    };
+    for(const entry of source.getSnapshot().entries||[])observe(entry.event,false);
+    return source.subscribe(()=>{
+      const {change}=source.getSnapshot();
+      if(change?.kind==='append')for(const entry of change.entries||[])observe(entry.event,true);
+      else if(change?.kind==='settle-assistant'&&change.entry)observe(change.entry.event,false);
+      else if(change?.kind==='replace'||change?.kind==='prepend'){currentTurn=0;turnOpen=false;for(const entry of source.getSnapshot().entries||[])observe(entry.event,false);}
+    });
+  }
+  function memoryCardCopy(record){
+    const original=(record.memory_text||'').trim();
+    const feedbackMissing=/No evaluator feedback supplied/i.test(original);
+    const taskContinues=/Business dialogue batch boundary; task remains unfinished/i.test(original);
+    const suppliedTitle=(record.title||'').trim();
+    const title=suppliedTitle&&!['这条记忆已核实','尚未收到反馈'].includes(suppliedTitle)?suppliedTitle:
+      feedbackMissing?'当时没有提供评测反馈':taskContinues?'当时任务尚未完成，仍需继续处理':original.replace(/^(observation|agent_final_output|fact|policy):\s*/i,'')||'记忆原文未保存';
+    return {
+      title,
+      usage:record.usage_summary||(feedbackMissing&&record.application?'汇总时按“没有反馈”处理，未将其当作用户认可。':taskContinues&&record.application?'判断工作仍在进行，继续处理后续请求。':record.application||''),
+      legacy:!suppliedTitle
+    };
+  }
+  function VerifiedMemories({sessionId}={}){
+    const [data,setData]=React.useState({records:[]}),[error,setError]=React.useState(''),[loading,setLoading]=React.useState(true);
+    const current=React.useRef(sessionId);current.current=sessionId;
+    async function refresh(){const id=sessionId;try{const d=await api('verified-memory?session_id='+encodeURIComponent(id));if(current.current===id){setData(d);setError('');setLoading(false)}}catch(e){if(current.current===id){setError(e.message);setLoading(false)}}}
+    React.useEffect(()=>{
+      let live=true;setData({records:[]});setError('');setLoading(true);
+      if(!sessionId){setLoading(false);return}
+      const load=async()=>{try{const d=await api('verified-memory?session_id='+encodeURIComponent(sessionId));if(live){setData(d);setError('');setLoading(false)}}catch(e){if(live){setError(e.message);setLoading(false)}}};
+      load();const timer=setInterval(load,2000);return()=>{live=false;clearInterval(timer)};
+    },[sessionId]);
+    const records=data.records||[];
+    return h('section',{className:'dsh-evolith-verified-panel','aria-label':'当前对话已验证记忆'},
+      h('div',{className:'dsh-evolith-verified-heading'},h('div',null,h('h2',null,'本次用到的记忆'),h('span',{className:'dsh-evolith-verified-muted'},'当前对话 · '+records.length+'条记录')),h('button',{type:'button',className:'dsh-evolith-verified-refresh',onClick:refresh},'刷新')),
+      h('p',{className:'dsh-evolith-verified-explanation'},'这里只展示助手实际用过、并核实过的记忆。'),
+      data.enabled===false?h('p',{className:'dsh-evolith-verified-muted'},'本会话已关闭 Evolith，保留此前的验证记录。'):null,
+      error?h('p',{role:'alert',className:'dsh-evolith-verified-error'},'读取失败：'+error):null,
+      loading?h('p',{role:'status',className:'dsh-evolith-verified-muted'},'正在读取…'):null,
+      !loading&&!error&&!records.length?h('div',{className:'dsh-evolith-verified-empty'},h('strong',null,'暂时没有已验证记忆'),h('p',null,'助手确认某条记忆有用且正确后，会自动记录在这里。')):null,
+      ...records.slice().reverse().map(record=>{const copy=memoryCardCopy(record);return h('article',{key:record.id,className:'dsh-evolith-verified-card'},
+        h('div',{className:'dsh-evolith-verified-status'},h('span',{'aria-hidden':true},'✓'),h('span',null,'已使用 · 已核实'),h('span',{className:'dsh-evolith-verified-round'},'第'+record.verified_turn+'轮')),
+        h('div',{className:'dsh-evolith-verified-eyebrow'},'记忆内容'),
+        h('h3',{className:'dsh-evolith-verified-title'},copy.title),
+        h('div',{className:'dsh-evolith-verified-summary'},h('strong',null,'本次用途'),h('p',null,copy.usage)),
+        h('details',{className:'dsh-evolith-verified-details'},h('summary',null,'查看原文与证据'),
+          h('dl',null,h('dt',null,'记忆原文'),h('dd',null,record.memory_text),h('dt',null,'使用详情'),h('dd',null,record.application),h('dt',null,'核实说明'),h('dd',null,record.verification_reason),h('dt',null,'证据原文'),h('dd',null,h('pre',null,record.evidence?.quote),h('span',{className:'dsh-evolith-verified-muted'},'第'+record.evidence?.source_turn+'轮 · '+(record.evidence?.tool_name||'用户消息'))),h('dt',null,'记忆编号与来源'),h('dd',null,h('code',null,record.memory_id),h('p',null,record.provenance||'来源未标注'),h('code',null,record.memory_version?.slice(0,12))))));}),
+      records.length?h('p',{className:'dsh-evolith-verified-muted'},'核实结论由助手根据所列依据作出。'):null);
+  }
+  function Toggle({ sessionId } = {}) {
+    const [enabled, setEnabled] = React.useState(false);
+    const [busy, setBusy] = React.useState(true);
+    const [error, setError] = React.useState("");
+    const [open, setOpen] = React.useState(false);
+    const [position, setPosition] = React.useState(null);
+    const help = React.useRef(null), tip = React.useRef(null), hideTimer = React.useRef(null);
+    const hovered = React.useRef(false), focused = React.useRef(false);
+    const currentSession = React.useRef(sessionId);
+    currentSession.current = sessionId;
+    const tooltipId = React.useId();
+    const cancelHide = () => { if (hideTimer.current) clearTimeout(hideTimer.current); };
+    const showHelp = () => { cancelHide(); setOpen(true); };
+    const hideHelp = () => {
+      cancelHide();
+      if (hovered.current || focused.current) return;
+      hideTimer.current = setTimeout(() => { if (!hovered.current && !focused.current) setOpen(false); }, 120);
+    };
+    const pointerEnter = () => { hovered.current = true; showHelp(); };
+    const pointerLeave = () => { hovered.current = false; hideHelp(); };
+    const focusEnter = () => { focused.current = true; showHelp(); };
+    const focusLeave = () => { focused.current = false; hideHelp(); };
+    React.useEffect(() => {
+      let live = true;
+      setBusy(true); setEnabled(false); setError(""); setOpen(false);
+      if (!sessionId) { setBusy(false); return () => { live = false; }; }
+      api("evolith?session_id=" + encodeURIComponent(sessionId)).then(d => {
+        if (live) setEnabled(d.enabled === true);
+      }).catch(e => { if (live) setError(e.message); })
+        .finally(() => { if (live) setBusy(false); });
+      return () => { live = false; cancelHide(); };
+    }, [sessionId]);
+    React.useEffect(()=>{
+      if(!enabled||!sessionId)return;
+      const source=hostContext?.get?.('sessions')?.binding?.(sessionId)?.eventSource;
+      if(!source?.subscribe||!source?.getSnapshot)return;
+      return watchVerificationResults(source,turn=>{
+        if(currentSession.current!==sessionId)return;
+        const key=sessionId+':'+turn;
+        if(openedVerificationTurns.has(key))return;
+        openedVerificationTurns.add(key);openVerifications(sessionId);
+      });
+    },[sessionId,enabled]);
+    React.useLayoutEffect(() => {
+      if (!open || !help.current || !tip.current) { setPosition(null); return; }
+      const a = help.current.getBoundingClientRect(), t = tip.current.getBoundingClientRect();
+      const left = Math.max(12, Math.min(a.left + a.width / 2 - t.width / 2, window.innerWidth - t.width - 12));
+      const top = a.top - t.height - 10 >= 12 ? a.top - t.height - 10 : Math.max(12, Math.min(a.bottom + 10, window.innerHeight - t.height - 12));
+      setPosition({ left, top });
+    }, [open]);
+    React.useEffect(() => {
+      if (!open) return;
+      const dismiss = e => { if(e?.type === "scroll" && tip.current?.contains(e.target)) return; setOpen(false); };
+      const escape = e => { if (e.key === "Escape") { e.stopPropagation(); dismiss(); } };
+      window.addEventListener("resize", dismiss);
+      window.addEventListener("scroll", dismiss, true);
+      document.addEventListener("keydown", escape, true);
+      return () => {
+        window.removeEventListener("resize", dismiss);
+        window.removeEventListener("scroll", dismiss, true);
+        document.removeEventListener("keydown", escape, true);
+      };
+    }, [open]);
+    async function change() {
+      const id = sessionId, next = !enabled;
+      setBusy(true); setError("");
+      try {
+        await api("evolith?session_id=" + encodeURIComponent(id), "PUT", { enabled: next });
+        if (currentSession.current === id) setEnabled(next);
+      } catch (e) { if (currentSession.current === id) setError(e.message); }
+      finally { if (currentSession.current === id) setBusy(false); }
+    }
+    const tooltip = open ? createPortal(
+      h("div", { ref: tip, id: tooltipId, role: "tooltip", className: "dsh-evolith-tooltip",
+        style: { left: position?.left ?? 0, top: position?.top ?? 0, visibility: position ? "visible" : "hidden" },
+        onMouseEnter: pointerEnter, onMouseLeave: pointerLeave },
+        h("div", { className: "dsh-evolith-tooltip-title" }, "Evolith 模式"),
+        h("p", null, "可在同一个 session 中持续对话，通过记忆管理减少重复上下文、节省 token，并可能改善效果。"),
+        h("div", { className: "dsh-evolith-privacy" },
+          h("strong", null, "开启即表示允许上传会话内容"),
+          h("p", null, "整个 session 的用户消息、模型回复和工具结果将发送至你配置的服务端处理与保存。")),
+        h("p", { className: "dsh-evolith-tooltip-foot" }, "关闭后不接入 Evolith，也不再上传会话数据。")), document.body) : null;
+    return h("span", { className: "dsh-evolith-control" },
+      h("button", { type: "button", role: "switch", className: "dsh-evolith-switch", "aria-label": "启用Evolith模式",
+        "aria-checked": enabled, "aria-busy": busy || undefined, disabled: busy || !sessionId, onClick: change },
+        h("span", { className: "dsh-evolith-track", "aria-hidden": true }, h("span", { className: "dsh-evolith-thumb" })),
+        h("span", null, "Evolith")),
+      h("button", { ref: help, type: "button", className: "dsh-evolith-help", "aria-label": "Evolith 模式说明",
+        "aria-expanded": open, "aria-describedby": open ? tooltipId : undefined,
+        onMouseEnter: pointerEnter, onMouseLeave: pointerLeave, onFocus: focusEnter, onBlur: focusLeave, onClick: () => { help.current?.focus(); showHelp(); } },
+        h("svg", { width: 18, height: 18, viewBox: "0 0 20 20", fill: "none", stroke: "currentColor", strokeWidth: 1.5, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true },
+          h("circle", { cx: 10, cy: 10, r: 7.6 }),
+          h("path", { d: "M7.8 7.6a2.3 2.3 0 0 1 4.5.7c0 1.6-2.3 1.9-2.3 3.3" }),
+          h("circle", { cx: 10, cy: 14.2, r: .65, fill: "currentColor", stroke: "none" }))),
+      enabled ? h('button',{type:'button',className:'dsh-evolith-help','aria-label':'查看已验证记忆',title:'查看本对话已使用并验证的记忆',onClick:()=>openVerifications(sessionId)},
+        h('svg',{width:17,height:17,viewBox:'0 0 20 20',fill:'none',stroke:'currentColor',strokeWidth:1.5,'aria-hidden':true},h('path',{d:'M10 2.4 16 5v4.4c0 3.6-2.6 5.9-6 8.2-3.4-2.3-6-4.6-6-8.2V5Z'}),h('path',{d:'m6.7 9.5 2.1 2.1 4.4-4.4'}))) : null,
+      error ? h("span", { role: "alert", title: error, style: { color: "#b42318", fontSize: 12 } }, "设置失败") : null,
+      tooltip);
+  }
+  function Settings() {
+    const [url, setUrl] = React.useState(""), [token, setToken] = React.useState(""), [data, setData] = React.useState({ errors: [] }), [message, setMessage] = React.useState("");
+    async function load() {
+      const r = await fetch("/dsh-memory-bridge/status", { credentials: "same-origin", cache: "no-store" });
+      if (!r.ok) throw Error("无法读取本地设置");
+      const d = await r.json();
+      setData(d);
+      setUrl(d.server.url);
+    }
+    React.useEffect(() => {
+      load().catch((e) => setMessage(e.message));
+      const t = setInterval(() => {
+        fetch("/dsh-memory-bridge/status", { credentials: "same-origin" }).then((r) => r.json()).then(setData).catch(() => {
+        });
+      }, 4e3);
+      return () => clearInterval(t);
+    }, []);
+    const button = (text, fn) => h("button", { type: "button", onClick: () => {
+      try {
+        return Promise.resolve(fn()).catch((e) => setMessage(e.message));
+      } catch (e) {
+        setMessage((text === "记忆管理" ? "内置浏览器未能打开：" : "") + e.message);
+      }
+    }, style: { padding: "8px 14px", border: "1px solid #d8dce2", borderRadius: 8, background: "white", cursor: "pointer" } }, text);
+    return h(
+      "section",
+      { style: { maxWidth: 1e3, display: "grid", gap: 16 } },
+      h("h2", { style: { margin: 0, fontSize: 24 } }, "记忆"),
+      h("p", { style: { margin: 0, fontSize: 13, lineHeight: 1.6, color: "#737b89" } }, "仅对主动开启 Evolith 的会话启用记忆管理。"),
+      h("div", { style: { display: "flex", gap: 10 } }, button("刷新", load), button("记忆管理", () => {
+        const target = new URL("/workbench", url).href;
+        const side = hostContext?.get?.("sidebarRight"), tabs = hostContext?.get?.("sidebarRightTabs");
+        if (side?.openTab && tabs?.get("browser")) side.openTab("browser", { params: { url: target }, revealIfOpened: false });
+        else window.open(target, "_blank", "noopener,noreferrer");
+      }), h("a", { href: data.server?.url ? new URL("/workbench", data.server.url).href : void 0, target: "_blank", rel: "noopener noreferrer", style: { padding: "8px 14px", border: "1px solid #d8dce2", borderRadius: 8, textDecoration: "none", color: "inherit", fontSize: 13 } }, "系统浏览器打开")),
+      h("section", { style: { padding: 24, border: "1px solid #e0e2e5", borderRadius: 12, background: "#f7f8fa", display: "grid", gap: 16 } }, h("h3", { style: { margin: 0, fontSize: 18 } }, "线上服务连接"), h("p", { style: { margin: 0, fontSize: 13, lineHeight: 1.6, color: "#737b89" } }, "先保存连接配置，再检查服务是否可访问。"), h("div", { style: { display: "grid", gridTemplateColumns: "minmax(0,1.3fr) minmax(0,1fr)", gap: 16 } }, h("label", { style: { display: "grid", gap: 8, fontSize: 14 } }, "服务器地址", h("input", { type: "url", value: url, onChange: (e) => setUrl(e.target.value), style: { width: "100%", boxSizing: "border-box", padding: 10, borderRadius: 8, border: "1px solid #d8dce2", background: "white" } })), h("label", { style: { display: "grid", gap: 8, fontSize: 14 } }, "访问密钥", h("input", { type: "password", autoComplete: "new-password", value: token, onChange: (e) => setToken(e.target.value), placeholder: data.server?.token_configured ? "已保存，留空则保留" : "填写账号默认访问密钥", style: { width: "100%", boxSizing: "border-box", padding: 10, borderRadius: 8, border: "1px solid #d8dce2", background: "white" } }))), h("div", { style: { display: "flex", gap: 10 } }, button("保存连接配置", async () => {
+        await api("registry", "PUT", { server_url: url, ...token.trim() ? { api_token: token.trim() } : {} });
+        setToken("");
+        setMessage("已保存");
+        await load();
+      }), button("检查连接", async () => {
+        const d = await api("check", "POST", {});
+        setMessage("连接正常 · " + d.group_id);
+      })), h("p", { style: { margin: 0, fontSize: 13, lineHeight: 1.6, color: "#737b89" } }, "注册后会自动创建默认记忆组和访问密钥。填写账号密钥即可共享该账号的记忆，无需配置 Group ID。"), h("p", { role: "status" }, message)),
+      h("details", { style: { padding: 16, border: "1px solid #e0e2e5", borderRadius: 10 } }, h("summary", null, "本地错误日志（" + (data.errors?.length || 0) + "）"), h("p", { style: { margin: 0, fontSize: 13, lineHeight: 1.6, color: "#737b89" } }, "仅在本地展示客户端报错，不上传到记忆服务器。"), h("pre", { style: { whiteSpace: "pre-wrap", maxHeight: 300, overflow: "auto" } }, data.errors?.length ? data.errors.map((x) => x.at + " " + x.message).join("\n") : "暂无错误"))
+    );
+  }
+  function apply(ctx) {
+    hostContext = ctx;
+    ctx.inject?.(['sidebarRightTabs','sidebarRight'], scoped=>{
+      scoped.effect(()=>scoped.sidebarRightTabs.register({id:verificationTab,kind:verificationKind,title:()=> '已验证记忆',guide:[{id:'verified-memory',order:55,title:()=> '已验证记忆',description:()=> '查看当前对话实际使用的记忆与验证依据'}]}));
+      scoped.slots.inject('sidebar.right.pane.tab',()=>scoped.slots.register({name:'sidebar.right.pane.tab',key:verificationTab},VerifiedMemories));
+    });
+    ctx.effect(() => {
+      const style = document.createElement("style");
+      style.dataset.evolithControls = "1";
+      style.textContent = controlStyles;
+      document.head.appendChild(style);
+      return () => style.remove();
+    });
+    ctx.effect(() => {
+      const report = (e) => {
+        api("client-error", "POST", { message: String(e.message || e.reason?.message || e.reason || "客户端错误") }).catch(() => {
+        });
+      };
+      window.addEventListener?.("error", report);
+      window.addEventListener?.("unhandledrejection", report);
+      return () => {
+        window.removeEventListener?.("error", report);
+        window.removeEventListener?.("unhandledrejection", report);
+      };
+    });
+    ctx.slots.inject("conversation.input.left", () => ctx.slots.register({ name: "conversation.input.left", id: "evolith-mode", order: 40 }, Toggle));
+    ctx.effect(() => ctx.locale.register("settings.memoryBridge", { zh: { nav: "记忆" }, en: { nav: "Memory" } }));
+    ctx.slots.inject("settings.section", () => ctx.slots.register({ name: "settings.section", id: "memory-bridge", order: 45, label: () => ctx.locale.bind("settings.memoryBridge")("nav") }, Settings));
+  }
+  return { apply, inject: ["slots", "locale"] };
+} });

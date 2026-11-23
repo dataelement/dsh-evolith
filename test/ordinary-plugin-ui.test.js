@@ -17,8 +17,8 @@ test('ordinary plugin registers memory settings without a desktop workbench serv
     }
   })
   const plugin = definition.factory(name => {
-    assert.equal(name, 'react')
-    return { createElement() {} }
+    assert.ok(['react','react-dom'].includes(name))
+    return name==='react-dom'?{createPortal(){}}:{createElement(){}}
   })
   assert.deepEqual(Array.from(plugin.inject), ['slots', 'locale'])
   const sections = []
@@ -27,14 +27,17 @@ test('ordinary plugin registers memory settings without a desktop workbench serv
     effect(fn) { const cleanup = fn(); if (typeof cleanup === 'function') cleanups.push(cleanup) },
     locale: { register() { return () => {} }, bind() { return () => '记忆' } },
     slots: {
-      inject(name, fn) { assert.equal(name, 'settings.section'); fn() },
+      inject(name, fn) { assert.ok(['settings.section','conversation.input.left'].includes(name)); fn() },
       register(options, component) { sections.push({ options, component }) }
     }
   })
-  assert.equal(sections.length, 1)
-  assert.equal(sections[0].options.id, 'memory-bridge')
-  assert.equal(sections[0].options.label(), '记忆')
-  assert.equal(typeof sections[0].component, 'function')
+  assert.equal(sections.length, 2)
+  const settings = sections.find(x => x.options.id === 'memory-bridge')
+  const toggle = sections.find(x => x.options.id === 'evolith-mode')
+  assert.equal(toggle.options.name, 'conversation.input.left')
+  assert.equal(settings.options.id, 'memory-bridge')
+  assert.equal(settings.options.label(), '记忆')
+  assert.equal(typeof settings.component, 'function')
   assert.equal(styles.length, 1)
   for (const cleanup of cleanups) cleanup()
   assert.deepEqual(removals, ['style'])

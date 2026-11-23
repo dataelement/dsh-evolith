@@ -1,6 +1,6 @@
 {
   "name": "dsh-memory-bridge-profile",
-  "version": "0.16.4",
+  "version": "0.18.5",
   "description": "DSH Memory plugin for existing workspaces and conversations, connected to company intranet memory services.",
   "type": "module",
   "main": "./index.js",
@@ -42,12 +42,15 @@
     "README.md"
   ],
   "scripts": {
-    "check": "node --check index.js && node --check client.js && node --check src/config.js && node --check src/group-config.js && node --check src/memory-client.js && node --check src/episode.js && node --check src/receipt-marker.js && node --check src/session-events.js && node --check src/trace.js && node --check src/web-api.js && node --check src/workspaces.js && node --check src/auto-join.js && node --check src/workbench-api.js && node --check static/workbench.js && node --check static/account.js && node --check src/dsh-catalog.js && node --check src/history-uploads.js && node --check src/diagnostics.js && node --check src/processing.js",
-    "test": "node --test"
+    "check": "node --check index.js && node --check client.js && node --check src/config.js && node --check src/group-config.js && node --check src/memory-client.js && node --check src/episode.js && node --check src/receipt-marker.js && node --check src/session-events.js && node --check src/trace.js && node --check src/web-api.js && node --check src/workspaces.js && node --check src/auto-join.js && node --check src/workbench-api.js && node --check static/workbench.js && node --check static/account.js && node --check src/dsh-catalog.js && node --check src/history-uploads.js && node --check src/diagnostics.js && node --check src/processing.js && node --check src/evolith-runtime.js && node --check src/evolith-window.js && node --check src/evolith-consent.js && node --check src/verified-memory.js",
+    "test": "./scripts/test.sh",
+    "test:unit": "./scripts/test.sh --unit",
+    "test:bizagent": "./scripts/test.sh --bizagent",
+    "test:all": "./scripts/test.sh"
   },
   "engines": {
     "node": ">=22.19.0",
-    "dsh": "0.2.1-rc.2 || 0.2.2-alpha.2 || 0.2.2-rc.1"
+    "dsh": "0.2.0-rc.2 || 0.2.1-rc.2 || 0.2.2-alpha.2 || 0.2.2-rc.1"
   },
   "license": "UNLICENSED",
   "peerDependencies": {
@@ -80,7 +83,8 @@
     "@deepseek-ai/dsh-llm": "0.2.1-rc.2",
     "@deepseek-ai/dsh-llm-deepseek": "0.2.1-rc.2",
     "@deepseek-ai/dsh-session": "0.2.1-rc.2",
-    "@deepseek-ai/dsh-system-prompt": "0.2.1-rc.2"
+    "@deepseek-ai/dsh-system-prompt": "0.2.1-rc.2",
+    "jsdom": "29.1.1"
   },
   "repository": {
     "type": "git",

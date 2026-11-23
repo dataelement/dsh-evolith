@@ -7,3 +7,5 @@ qa-results/
 *.db
 *.sqlite*
 __pycache__/
+
+test-results/
