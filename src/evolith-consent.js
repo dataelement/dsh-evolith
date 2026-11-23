@@ -19,7 +19,9 @@ class EvolithConsent {
   }
   async enabled(id) {
     await this.ready;
-    return this.sessions[String(id)]?.enabled === true && this.sessions[String(id)]?.owner === this.owner();
+    if (typeof id !== "string" || !id) return false;
+    const saved = this.sessions[id];
+    return saved === undefined ? true : saved.enabled === true && saved.owner === this.owner();
   }
   set(id, enabled) {
     if (typeof id !== "string" || !id || typeof enabled !== "boolean") throw new TypeError("Invalid session consent");

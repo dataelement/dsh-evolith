@@ -145,10 +145,10 @@ async function runReplay({name,enabled=true,rs=rounds,memoryFailure=false,slowCo
     };
     await ctx.plugin({name:'evolith-bizagent-regression',inject:['tokenMeter'],apply(scope){runtime=installEvolithBridge(scope,{}, {consent,verificationStore,fetchImpl:fakeFetch,outboxPath:join(temp,'outbox.json'),store:{loadConfig:async()=>({serverUrl:'http://memory.test.invalid',apiToken:'test-only-not-a-real-token'})}});}});
     await runtime.ready;
-    if(enabled&&verificationProbe)await consent.set('bizagent-regression-'+name,true);
+    await consent.set('bizagent-regression-'+name,enabled);
     handle=await ctx.agents.create({sessionId:'bizagent-regression-'+name,agentOptions:{provider:'bizagent-replay',model:'recorded-case-022'}});
     if(enabled&&!verificationProbe){await consent.set(handle.agent.session.id,true);await runtime.syncVerificationTools(handle.agent);}
-    if(verificationProbe){const other=await ctx.agents.create({sessionId:'another-disabled-conversation',agentOptions:{provider:'bizagent-replay',model:'recorded-case-022'}});try{assert.ok(!other.agent.ctx.get('tools').schemas().some(t=>t.name===VERIFIED_MEMORY_TOOL),'Verification tool leaked into another disabled conversation')}finally{await other.dispose()}}
+    if(verificationProbe){await consent.set('another-disabled-conversation',false);const other=await ctx.agents.create({sessionId:'another-disabled-conversation',agentOptions:{provider:'bizagent-replay',model:'recorded-case-022'}});try{assert.ok(!other.agent.ctx.get('tools').schemas().some(t=>t.name===VERIFIED_MEMORY_TOOL),'Verification tool leaked into another disabled conversation')}finally{await other.dispose()}}
 
     for(const [i,r] of rs.entries()){
       turn=i+1;step=0;

@@ -31,7 +31,7 @@ async function controls() {
 test('Evolith uses an accessible compact switch and a vector help button',async()=>{
   const f=await controls(),all=f.nodes(f.render());
   const toggle=all.find(n=>n.props.role==='switch'),help=all.find(n=>n.props['aria-label']==='Evolith 模式说明');
-  assert.equal(toggle.type,'button');assert.equal(toggle.props['aria-checked'],false);
+  assert.equal(toggle.type,'button');assert.equal(toggle.props['aria-checked'],true);
   assert.ok(!all.some(n=>n.type==='input'&&n.props.type==='checkbox'));
   assert.equal(help.type,'button');assert.ok(f.nodes(help).some(n=>n.type==='svg'));
   assert.equal(help.props.title,undefined);
@@ -59,11 +59,11 @@ test('hover and keyboard focus open a portal containing the complete privacy exp
 test('the new switch persists the selected state through the same local consent API',async()=>{
   const f=await controls();
   await f.nodes(f.render()).find(n=>n.props.role==='switch').props.onClick();
-  assert.equal(f.nodes(f.render()).find(n=>n.props.role==='switch').props['aria-checked'],true);
+  assert.equal(f.nodes(f.render()).find(n=>n.props.role==='switch').props['aria-checked'],false);
   assert.equal(f.calls[0].options.method,'PUT');
-  assert.deepEqual(JSON.parse(f.calls[0].options.body),{enabled:true});
+  assert.deepEqual(JSON.parse(f.calls[0].options.body),{enabled:false});
   await f.nodes(f.render()).find(n=>n.props.role==='switch').props.onClick();
-  assert.deepEqual(JSON.parse(f.calls[1].options.body),{enabled:false});
+  assert.deepEqual(JSON.parse(f.calls[1].options.body),{enabled:true});
 });
 
 test('keyboard focus keeps the help card open when the mouse leaves, then blur closes it',async()=>{

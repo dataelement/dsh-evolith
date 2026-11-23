@@ -27,6 +27,7 @@ test("disabled sessions send no history, queries, telemetry or writes", async ()
     calls++;
     throw Error("Unexpected network");
   });
+  await f.consent.set(f.session.id, false);
   const input = { agent: { session: f.session }, turn: 1, step: 1 };
   assert.equal(await f.hooks["agent/pre-step"](input, async () => f.decision), f.decision);
   f.hooks["session/event"](f.session, { type: "assistant/message", data: { usage: { inputTokens: 1 } } });
@@ -63,11 +64,14 @@ test("opt-out while read is pending prevents injection or window movement", asyn
   finish();
   assert.equal(await pending, f.decision);
 });
-test("session opt-in is never inherited by another session", async () => {
+test("new sessions default on independently of another session choice", async () => {
   const store = new EvolithConsent();
   await store.set("a", true);
   assert.equal(await store.enabled("a"), true);
-  assert.equal(await store.enabled("b"), false);
+  assert.equal(await store.enabled("b"), true);
+  await store.set("a", false);
+  assert.equal(await store.enabled("a"), false);
+  assert.equal(await store.enabled("b"), true);
 });
 test("real DSH events retain public assistant/tool history and stable system prefix", async () => {
   const { Session } = await import(process.env.DSH_EVOLITH_TEST_KERNEL_ROOT ? pathToFileURL(join(process.env.DSH_EVOLITH_TEST_KERNEL_ROOT,"@deepseek-ai/dsh-session/lib/index.js")).href : "@deepseek-ai/dsh-session");
@@ -181,4 +185,15 @@ test('memory authentication error propagates into native turn failure',async()=>
 test('other Memory errors are not mislabeled as an invalid key',async()=>{
   const f=await fixture(async()=>({ok:false,status:500,json:async()=>({detail:'writer unavailable'})}));
   await assert.rejects(f.runtime.request('account'),/^Error: writer unavailable$/);
+});
+
+test('default-on does not override saved choices or cross account ownership',async()=>{
+ const store=new EvolithConsent();store.owner=()=> 'first';
+ assert.equal(await store.enabled('new'),true);
+ await store.set('off',false);await store.set('on',true);
+ assert.equal(await store.enabled('off'),false);
+ store.owner=()=> 'second';
+ assert.equal(await store.enabled('on'),false);
+ assert.equal(await store.enabled('new-second'),true);
+ assert.equal(await store.enabled(''),false);
 });
