@@ -5,7 +5,7 @@ import {runInNewContext} from 'node:vm';
 
 async function viewFixture(records=[]){
  let definition,cursor=0;const tabs=[],entries=[],calls=[];
- const react={createElement:(type,props,...children)=>({type,props:props||{},children}),useState(initial){const i=cursor++;return[i===0?{records,enabled:true}:i===2?false:initial,()=>{}]},useRef:value=>({current:value}),useEffect(){},useLayoutEffect(){},useId:()=> 'id'};
+ const react={createElement:(type,props,...children)=>({type,props:props||{},children}),useState(initial){const i=cursor++;return[i===0?{sessionId:'session-current',records,enabled:true}:i===2?false:initial,()=>{}]},useRef:value=>({current:value}),useEffect(){},useLayoutEffect(){},useId:()=> 'id'};
  runInNewContext(await readFile(new URL('../client.js',import.meta.url),'utf8'),{window:{__ModuleLoader__:{load:d=>definition=d}},document:{createElement:()=>({dataset:{},remove(){}}),head:{appendChild(){}}},fetch:async(url)=>{calls.push(url);return {ok:true,json:async()=>({records,enabled:true})}}});
  const ctx={get(){},effect:fn=>fn(),locale:{register(){},bind:()=>()=>''},slots:{inject:(_name,fn)=>fn(),register:(opts,component)=>entries.push({opts,component})},sidebarRightTabs:{register:d=>{tabs.push(d);return()=>{}}}};ctx.inject=(_deps,fn)=>fn(ctx);
  definition.factory(n=>n==='react'?react:{createPortal(){}}).apply(ctx);
@@ -57,8 +57,8 @@ test('failures, unrelated tools, historical replay and unmounted sessions never 
  const f=await popupFixture();f.emit(start(1,1));f.emit(call(1,2,'failed'));f.emit(result(1,3,'failed',{isError:true}));f.emit(call(1,4,'other','bash'));f.emit(result(1,5,'other'));f.emit(call(1,6,'historical'),'prepend');f.emit(result(1,7,'historical'),'prepend');assert.equal(f.opened.length,0);
  f.cleanup();f.emit(call(1,8,'after-unmount'));f.emit(result(1,9,'after-unmount'));assert.equal(f.opened.length,0);
 });
-test('manual viewing still opens the panel without any new tool call',async()=>{
- const f=await popupFixture();const button=f.nodes(f.tree).find(n=>n.props['aria-label']==='查看记忆使用记录');button.props.onClick();assert.equal(f.opened.length,1);f.cleanup();
+test('composer no longer contains the session-wide benefit trigger',async()=>{
+ const f=await popupFixture();assert.ok(!f.nodes(f.tree).some(n=>n.props.className?.includes('dsh-evolith-benefit-trigger')));assert.equal(f.opened.length,0);f.cleanup();
 });
 
 

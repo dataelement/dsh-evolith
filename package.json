@@ -1,6 +1,6 @@
 {
   "name": "dsh-memory-bridge-profile",
-  "version": "0.18.18",
+  "version": "0.18.19",
   "description": "Evolith 为 DSH Desktop 提供跨会话记忆与上下文管理，复用历史经验，减少重复查询和 Token 消耗。",
   "type": "module",
   "main": "./index.js",
@@ -87,7 +87,9 @@
     "@deepseek-ai/dsh-llm-deepseek": "0.2.1-rc.2",
     "@deepseek-ai/dsh-session": "0.2.1-rc.2",
     "@deepseek-ai/dsh-system-prompt": "0.2.1-rc.2",
-    "jsdom": "29.1.1"
+    "jsdom": "29.1.1",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
   },
   "repository": {
     "type": "git",

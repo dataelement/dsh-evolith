@@ -27,11 +27,11 @@ test('ordinary plugin registers memory settings without a desktop workbench serv
     effect(fn) { const cleanup = fn(); if (typeof cleanup === 'function') cleanups.push(cleanup) },
     locale: { register() { return () => {} }, bind() { return () => '记忆' } },
     slots: {
-      inject(name, fn) { assert.ok(['settings.section','conversation.input.left'].includes(name)); fn() },
+      inject(name, fn) { assert.ok(['settings.section','conversation.input.left','conversation.chat.assistant-actions'].includes(name)); fn() },
       register(options, component) { sections.push({ options, component }) }
     }
   })
-  assert.equal(sections.length, 2)
+  assert.equal(sections.length, 3)
   const settings = sections.find(x => x.options.id === 'memory-bridge')
   const toggle = sections.find(x => x.options.id === 'evolith-mode')
   assert.equal(toggle.options.name, 'conversation.input.left')

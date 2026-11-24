@@ -35,13 +35,16 @@ window.__ModuleLoader__.load({ id: "dsh-memory-bridge-profile", factory: (requir
 .dsh-evolith-verified-refresh{border:1px solid var(--dsw-alias-border-l1,#e1e6ed);border-radius:7px;background:transparent;color:inherit;font:inherit;padding:3px 9px;cursor:pointer}.dsh-evolith-verified-explanation{color:var(--dsw-alias-label-secondary,#647084);font-size:12px;margin:14px 0 18px}.dsh-evolith-verified-empty{border:1px dashed var(--dsw-alias-border-l1,#e1e6ed);border-radius:10px;padding:18px 14px;margin-top:20px}.dsh-evolith-verified-empty p{font-size:12px;color:var(--dsw-alias-label-secondary,#647084)}
 .dsh-evolith-verified-card{border:1px solid var(--dsw-alias-border-l1,#e1e6ed);border-radius:10px;padding:16px;margin:12px 0;overflow-wrap:anywhere}.dsh-evolith-verified-status{display:flex;align-items:center;gap:6px;color:#168058;font-size:11px;font-weight:500}.dsh-evolith-verified-round{margin-left:auto;color:var(--dsw-alias-label-tertiary,#7b8594);font-weight:400}.dsh-evolith-verified-eyebrow{font-size:11px;color:var(--dsw-alias-label-tertiary,#7b8594);margin-top:12px}.dsh-evolith-verified-title{font-size:15px;line-height:1.6;font-weight:600;margin:3px 0 13px;color:var(--dsw-alias-label-primary,#27364c)}.dsh-evolith-verified-summary{padding:0 0 0 10px;border-left:2px solid var(--dsw-alias-border-l1,#dce5f2)}.dsh-evolith-verified-summary strong{font-size:11px;font-weight:500;color:var(--dsw-alias-label-secondary,#647084)}.dsh-evolith-verified-summary p{margin:4px 0;font-size:13px;line-height:1.65;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}.dsh-evolith-verified-details{margin-top:10px;border-top:1px solid var(--dsw-alias-border-l1,#e1e6ed);padding-top:10px;font-size:12px}.dsh-evolith-verified-details summary{cursor:pointer;color:var(--dsw-alias-label-tertiary,#7b8594)}.dsh-evolith-verified-details pre{white-space:pre-wrap;max-height:180px;overflow:auto;background:var(--dsw-alias-state-business-tertiary,#f0f5fe);padding:9px;border-radius:6px;font-size:11px}.dsh-evolith-verified-card-title{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}.dsh-evolith-verified-card-title strong{font-size:12px;font-weight:600}.dsh-evolith-verified-badge{font-size:11px;background:#e8f6ef;color:#16734c;border-radius:5px;padding:1px 6px;white-space:nowrap}.dsh-evolith-verified-meta{margin-top:5px}.dsh-evolith-verified-card dl{margin:12px 0 0}.dsh-evolith-verified-card dt{font-size:12px;color:var(--dsw-alias-label-secondary,#647084);margin-top:9px}.dsh-evolith-verified-card dd{margin:3px 0 0}.dsh-evolith-verified-card blockquote{margin:5px 0;padding:7px 10px;border-left:2px solid #75a5ef;background:var(--dsw-alias-state-business-tertiary,#f0f5fe);white-space:pre-wrap}.dsh-evolith-verified-original{font-size:12px;margin-top:10px}.dsh-evolith-verified-original summary{cursor:pointer;color:var(--dsw-alias-label-secondary,#647084)}.dsh-evolith-verified-original p{white-space:pre-wrap}.dsh-evolith-verified-error{color:#b42318}
 .dsh-evolith-buffs{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 14px}.dsh-evolith-buff{display:inline-flex;align-items:center;gap:7px;box-sizing:border-box;padding:6px 10px;border:1px solid;border-radius:8px;font-size:12px;font-weight:600;line-height:1.35;box-shadow:none}.dsh-evolith-buff-icon{display:grid;place-items:center;width:21px;height:21px;flex:none;background:transparent;box-shadow:none}.dsh-evolith-buff--avoid{color:#316bc8;border-color:#d8e6fa;background:#f0f6ff}.dsh-evolith-buff--save{color:#a76c13;border-color:#f1dfb8;background:#fff8e9}
-.dsh-evolith-benefit-trigger{width:25px;min-width:25px;gap:0}.dsh-evolith-benefit-trigger--active{padding:0;border-radius:6px}.dsh-evolith-trigger-icon{display:grid;place-items:center;width:22px;height:22px;border:0;border-radius:0;background:transparent;box-shadow:none}.dsh-evolith-trigger-icon--avoid{color:#397af5}.dsh-evolith-trigger-icon--save{color:#bc811b}.dsh-evolith-trigger-icon--both{color:#4e74d4}
+.dsh-evolith-benefit-trigger{width:28px;height:28px;min-width:28px;gap:0;cursor:pointer}.dsh-evolith-turn-buff-anchor{display:inline-flex;align-items:center;flex:none}.dsh-evolith-benefit-trigger--active{padding:0;border-radius:6px}.dsh-evolith-trigger-icon{display:grid;place-items:center;width:22px;height:22px;border:0;border-radius:0;background:transparent;box-shadow:none}.dsh-evolith-trigger-icon--avoid{color:#397af5}.dsh-evolith-trigger-icon--save{color:#bc811b}.dsh-evolith-trigger-icon--both{color:#4e74d4}
 @media(prefers-reduced-motion:reduce){.dsh-evolith-track,.dsh-evolith-thumb{transition:none}}
 `;
   const verificationKind='evolith-verified-memory', verificationTab='dsh-memory-bridge-profile.verified-memory';
-  function openVerifications(sessionId){
+  const selectedMemoryTurns=new Map(),memoryTurnListeners=new Set();
+  function openVerifications(sessionId,turn=null){
     const side=hostContext?.get?.('sidebarRight'),tabs=hostContext?.get?.('sidebarRightTabs');
     if(!sessionId||!tabs?.get(verificationKind)||!side?.openTabIn)return;
+    selectedMemoryTurns.set(sessionId,Number.isInteger(turn)&&turn>0?turn:null);
+    for(const listener of memoryTurnListeners)listener(sessionId);
     side.openTabIn(sessionId,verificationKind,{revealIfOpened:true});
   }
   const openedVerificationTurns=new Set();
@@ -102,23 +105,29 @@ window.__ModuleLoader__.load({ id: "dsh-memory-bridge-profile", factory: (requir
     };
   }
   function VerifiedMemories({sessionId}={}){
-    const [data,setData]=React.useState({records:[]}),[error,setError]=React.useState(''),[loading,setLoading]=React.useState(true);
-    const current=React.useRef(sessionId);current.current=sessionId;
-    async function refresh(){const id=sessionId;try{const d=await api('verified-memory?session_id='+encodeURIComponent(id));if(current.current===id){setData(d);setError('');setLoading(false)}}catch(e){if(current.current===id){setError(e.message);setLoading(false)}}}
+    const [data,setData]=React.useState({sessionId,records:[]}),[error,setError]=React.useState(''),[loading,setLoading]=React.useState(true);
+    const [selection,setSelection]=React.useState({sessionId,turn:selectedMemoryTurns.get(sessionId)??null});
+    const selectedTurn=selection.sessionId===sessionId?selection.turn:selectedMemoryTurns.get(sessionId)??null;
     React.useEffect(()=>{
-      let live=true;setData({records:[]});setError('');setLoading(true);
-      if(!sessionId){setLoading(false);return}
-      const load=async()=>{try{const d=await api('verified-memory?session_id='+encodeURIComponent(sessionId));if(live){setData(d);setError('');setLoading(false)}}catch(e){if(live){setError(e.message);setLoading(false)}}};
-      load();const timer=setInterval(load,2000);return()=>{live=false;clearInterval(timer)};
+      const update=id=>{if(id===sessionId)setSelection({sessionId,turn:selectedMemoryTurns.get(sessionId)??null})};
+      update(sessionId);memoryTurnListeners.add(update);return()=>memoryTurnListeners.delete(update);
     },[sessionId]);
-    const records=data.records||[];
-    return h('section',{className:'dsh-evolith-verified-panel','aria-label':'当前对话使用的记忆'},
-      h('div',{className:'dsh-evolith-verified-heading'},h('div',null,h('h2',null,'本次用到的记忆'),h('span',{className:'dsh-evolith-verified-muted'},'当前对话 · '+records.length+'条记录')),h('button',{type:'button',className:'dsh-evolith-verified-refresh',onClick:refresh},'刷新')),
+    const current=React.useRef(sessionId);current.current=sessionId;
+    async function refresh(){const id=sessionId;try{const d=await api('verified-memory?session_id='+encodeURIComponent(id));if(current.current===id){setData({...d,sessionId:id});setError('');setLoading(false)}}catch(e){if(current.current===id){setError(e.message);setLoading(false)}}}
+    React.useEffect(()=>{
+      let live=true;setData({sessionId,records:[]});setError('');setLoading(true);
+      if(!sessionId){setLoading(false);return}
+      const load=async()=>{try{const d=await api('verified-memory?session_id='+encodeURIComponent(sessionId));if(live){setData({...d,sessionId});setError('');setLoading(false)}}catch(e){if(live){setError(e.message);setLoading(false)}}};
+      load();const timer=setInterval(load,2000);return()=>{live=false;clearInterval(timer)};
+    },[sessionId,selectedTurn]);
+    const records=(data.sessionId===sessionId?data.records||[]:[]).filter(record=>selectedTurn===null||(record.used_turn??record.verified_turn)===selectedTurn);
+    return h('section',{className:'dsh-evolith-verified-panel','aria-label':selectedTurn===null?'当前对话使用的记忆':'第'+selectedTurn+'轮使用的记忆'},
+      h('div',{className:'dsh-evolith-verified-heading'},h('div',null,h('h2',null,selectedTurn===null?'本次用到的记忆':'第'+selectedTurn+'轮用到的记忆'),h('span',{className:'dsh-evolith-verified-muted'},(selectedTurn===null?'当前对话':'对应本轮回复')+' · '+records.length+'条记录')),h('button',{type:'button',className:'dsh-evolith-verified-refresh',onClick:refresh},'刷新')),
       h('p',{className:'dsh-evolith-verified-explanation'},'这里展示助手标记为可能有帮助的记忆，例如规避风险或减少重复查询。'),
       data.enabled===false?h('p',{className:'dsh-evolith-verified-muted'},'本会话已关闭 Evolith，保留此前的使用记录。'):null,
       error?h('p',{role:'alert',className:'dsh-evolith-verified-error'},'读取失败：'+error):null,
       loading?h('p',{role:'status',className:'dsh-evolith-verified-muted'},'正在读取…'):null,
-      !loading&&!error&&!records.length?h('div',{className:'dsh-evolith-verified-empty'},h('strong',null,'暂时没有记忆使用记录'),h('p',null,'助手发现记忆可能帮助当前任务时，会标记在这里，无需先验证。')):null,
+      !loading&&!error&&!records.length?h('div',{className:'dsh-evolith-verified-empty'},h('strong',null,selectedTurn===null?'暂时没有记忆使用记录':'本轮没有记忆使用记录'),h('p',null,'助手发现记忆可能帮助当前任务时，会标记在这里，无需先验证。')):null,
       ...records.slice().reverse().map(record=>{const copy=memoryCardCopy(record),benefits=memoryBenefits(record);return h('article',{key:record.id,className:'dsh-evolith-verified-card'},
         h('div',{className:'dsh-evolith-verified-status'},h('span',{'aria-hidden':true},'✓'),h('span',null,record.usage_source==='actor_reported_helpfulness'?'可能有帮助':record.usage_source==='actor_reported_use'?'已使用':'已使用 · 已核实'),h('span',{className:'dsh-evolith-verified-round'},'第'+(record.used_turn??record.verified_turn)+'轮')),
         (benefits.avoid||benefits.save)?h('div',{className:'dsh-evolith-buffs'},benefits.avoid?benefitBadge('avoid'):null,benefits.save?benefitBadge('save'):null):null,
@@ -129,14 +138,71 @@ window.__ModuleLoader__.load({ id: "dsh-memory-bridge-profile", factory: (requir
           h('dl',null,h('dt',null,'记忆原文'),h('dd',null,record.memory_text),record.application?h('dt',null,'使用详情'):null,record.application?h('dd',null,record.application):null,record.verification_reason?h('dt',null,'核实说明'):null,record.verification_reason?h('dd',null,record.verification_reason):null,record.evidence?h('dt',null,'证据原文'):null,record.evidence?h('dd',null,h('pre',null,record.evidence.quote),h('span',{className:'dsh-evolith-verified-muted'},'第'+record.evidence.source_turn+'轮 · '+(record.evidence.tool_name||'用户消息'))):null,h('dt',null,'记忆编号与来源'),h('dd',null,h('code',null,record.memory_id),h('p',null,record.provenance||'来源未标注'),h('code',null,record.memory_version?.slice(0,12))))));}),
       records.length?h('p',{className:'dsh-evolith-verified-muted'},'标记表示助手判断可能有帮助，不代表已核实或收益已经发生。'):null);
   }
+  function assistantMessageTurn(source,messageId){
+    if(!source?.getSnapshot||!messageId)return null;
+    let turn=null;
+    for(const {event} of source.getSnapshot().entries||[]){
+      if(event.type==='turn/start'&&Number.isInteger(event.data?.turn))turn=event.data.turn;
+      if(event.type!=='assistant/message')continue;
+      const message=event.data?.message||event.data;
+      if(message?.id===messageId){
+        const value=event.data?.turn??turn;
+        return Number.isInteger(value)&&value>0?value:null;
+      }
+    }
+    return null;
+  }
+  function TurnMemoryBuff({sessionId,messageId}={}){
+    const [view,setView]=React.useState({sessionId:null,messageId:null,turn:null,records:[]});
+    const [target,setTarget]=React.useState(null),marker=React.useRef(null);
+    React.useEffect(()=>{
+      let live=true,request=0;
+      const source=hostContext?.get?.('sessions')?.binding?.(sessionId)?.eventSource;
+      let knownTurn=assistantMessageTurn(source,messageId);
+      setView({sessionId,messageId,turn:knownTurn,records:[]});
+      const load=async()=>{
+        const turn=assistantMessageTurn(source,messageId),version=++request;
+        if(turn===null)return;
+        try{
+          const data=await api('verified-memory?session_id='+encodeURIComponent(sessionId));
+          if(live&&version===request)setView({sessionId,messageId,turn,records:(data.records||[]).filter(record=>(record.used_turn??record.verified_turn)===turn)});
+        }catch{if(live&&version===request)setView({sessionId,messageId,turn,records:[]})}
+      };
+      if(sessionId&&knownTurn!==null)load();
+      const disposeResults=source?.subscribe&&source?.getSnapshot?watchVerificationResults(source,turn=>{
+        if(turn===assistantMessageTurn(source,messageId))load();
+      }):undefined;
+      const disposeTurn=source?.subscribe?.(()=>{
+        const next=assistantMessageTurn(source,messageId);
+        if(next!==knownTurn){knownTurn=next;setView({sessionId,messageId,turn:next,records:[]});if(next!==null)load();}
+      });
+      return()=>{live=false;disposeResults?.();disposeTurn?.()};
+    },[sessionId,messageId]);
+    const current=view.sessionId===sessionId&&view.messageId===messageId?view:{turn:null,records:[]};
+    const benefits=current.records.reduce((value,record)=>{const next=memoryBenefits(record);return{avoid:value.avoid||next.avoid,save:value.save||next.save}},{avoid:false,save:false});
+    const kind=benefits.avoid&&benefits.save?'both':benefits.avoid?'avoid':benefits.save?'save':null;
+    React.useLayoutEffect(()=>{
+      if(!kind)return;
+      // DSH's assistant-actions slot is before Branch. Its native [data-clock=end]
+      // row ends with usage/time. Mount a portal immediately before that end-info
+      // element, placing this button after Branch in both DOM and keyboard order.
+      const row=marker.current?.closest?.('[data-clock="end"]'),endInfo=row?.lastElementChild;
+      if(!row||!endInfo||endInfo===marker.current)return;
+      const anchor=document.createElement('span');anchor.className='dsh-evolith-turn-buff-anchor';
+      row.insertBefore(anchor,endInfo);setTarget(anchor);
+      return()=>{setTarget(null);anchor.remove()};
+    },[sessionId,messageId,Boolean(kind)]);
+    const label='查看第'+current.turn+'轮用到的记忆';
+    return h(React.Fragment,null,h('span',{ref:marker,hidden:true,'data-evolith-turn-marker':messageId}),
+      target&&kind?createPortal(h('button',{type:'button',className:'dsh-evolith-help dsh-evolith-benefit-trigger dsh-evolith-benefit-trigger--active','aria-label':label,title:'第'+current.turn+'轮 · '+[benefits.avoid?'避免问题':null,benefits.save?'节省调用':null].filter(Boolean).join('、')+' · '+current.records.length+'条记忆',onClick:()=>openVerifications(sessionId,current.turn)},
+        h('span',{className:'dsh-evolith-trigger-icon dsh-evolith-trigger-icon--'+kind,role:'img','aria-label':benefits.avoid&&benefits.save?'已触发避免问题和节省调用':benefits.avoid?'已触发避免问题':'已触发节省调用'},benefitGlyph(kind,20))),target):null);
+  }
   function Toggle({ sessionId } = {}) {
     const [enabled, setEnabled] = React.useState(true);
     const [busy, setBusy] = React.useState(true);
     const [error, setError] = React.useState("");
     const [open, setOpen] = React.useState(false);
     const [position, setPosition] = React.useState(null);
-    const [benefitState,setBenefitState]=React.useState({sessionId:null,avoid:false,save:false});
-    const benefits=benefitState.sessionId===sessionId?benefitState:{avoid:false,save:false};
     const help = React.useRef(null), tip = React.useRef(null), hideTimer = React.useRef(null);
     const hovered = React.useRef(false), focused = React.useRef(false);
     const currentSession = React.useRef(sessionId);
@@ -165,24 +231,14 @@ window.__ModuleLoader__.load({ id: "dsh-memory-bridge-profile", factory: (requir
     }, [sessionId]);
     React.useEffect(()=>{
       let live=true;
-      setBenefitState({sessionId,avoid:false,save:false});
       if(!enabled||!sessionId)return()=>{live=false};
-      const addBenefits=value=>{
-        if(!live||currentSession.current!==sessionId||(!value.avoid&&!value.save))return;
-        setBenefitState(previous=>({sessionId,avoid:(previous.sessionId===sessionId&&previous.avoid)||value.avoid,save:(previous.sessionId===sessionId&&previous.save)||value.save}));
-      };
-      // Reload actual persisted types on session entry; tool results update immediately.
-      api('verified-memory?session_id='+encodeURIComponent(sessionId)).then(d=>{
-        if(!live||currentSession.current!==sessionId)return;
-        for(const record of d.records||[])addBenefits(memoryBenefits(record));
-      }).catch(()=>{});
       const source=hostContext?.get?.('sessions')?.binding?.(sessionId)?.eventSource;
       const dispose=source?.subscribe&&source?.getSnapshot?watchVerificationResults(source,turn=>{
         if(!live||currentSession.current!==sessionId)return;
         const key=sessionId+':'+turn;
         if(openedVerificationTurns.has(key))return;
-        openedVerificationTurns.add(key);openVerifications(sessionId);
-      },addBenefits):undefined;
+        openedVerificationTurns.add(key);openVerifications(sessionId,turn);
+      }):undefined;
       return()=>{live=false;dispose?.()};
     },[sessionId,enabled]);
     React.useLayoutEffect(() => {
@@ -236,8 +292,6 @@ window.__ModuleLoader__.load({ id: "dsh-memory-bridge-profile", factory: (requir
           h("circle", { cx: 10, cy: 10, r: 7.6 }),
           h("path", { d: "M7.8 7.6a2.3 2.3 0 0 1 4.5.7c0 1.6-2.3 1.9-2.3 3.3" }),
           h("circle", { cx: 10, cy: 14.2, r: .65, fill: "currentColor", stroke: "none" }))),
-      enabled ? h('button',{type:'button',className:'dsh-evolith-help dsh-evolith-benefit-trigger'+(benefits.avoid||benefits.save?' dsh-evolith-benefit-trigger--active':''),'aria-label':'查看记忆使用记录',title:benefits.avoid||benefits.save?'本会话已触发：'+[benefits.avoid?'避免问题':null,benefits.save?'节省调用':null].filter(Boolean).join('、')+'；点击查看记忆使用记录':'尚未记录记忆收益；点击查看使用记录',onClick:()=>openVerifications(sessionId)},
-        benefits.avoid||benefits.save?h('span',{className:'dsh-evolith-trigger-icon dsh-evolith-trigger-icon--'+(benefits.avoid&&benefits.save?'both':benefits.avoid?'avoid':'save'),role:'img','aria-label':benefits.avoid&&benefits.save?'已触发避免问题和节省调用':benefits.avoid?'已触发避免问题':'已触发节省调用'},benefitGlyph(benefits.avoid&&benefits.save?'both':benefits.avoid?'avoid':'save',20)):benefitGlyph('avoid',17)) : null,
       error ? h("span", { role: "alert", title: error, style: { color: "#b42318", fontSize: 12 } }, "设置失败") : null,
       tooltip);
   }
@@ -313,6 +367,7 @@ window.__ModuleLoader__.load({ id: "dsh-memory-bridge-profile", factory: (requir
         window.removeEventListener?.("unhandledrejection", report);
       };
     });
+    ctx.slots.inject("conversation.chat.assistant-actions", () => ctx.slots.register({name:"conversation.chat.assistant-actions",id:"evolith-memory-buff",order:20},TurnMemoryBuff));
     ctx.slots.inject("conversation.input.left", () => ctx.slots.register({ name: "conversation.input.left", id: "evolith-mode", order: 40 }, Toggle));
     ctx.effect(() => ctx.locale.register("settings.memoryBridge", { zh: { nav: "记忆" }, en: { nav: "Memory" } }));
     ctx.slots.inject("settings.section", () => ctx.slots.register({ name: "settings.section", id: "memory-bridge", order: 45, label: () => ctx.locale.bind("settings.memoryBridge")("nav") }, Settings));
