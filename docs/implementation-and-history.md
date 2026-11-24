@@ -1,8 +1,8 @@
-> 本文保留原 README 的实现说明和版本历史。安装与更新请以[仓库首页](../README.md)为准。
+> 本文保留原 README 的实现说明和版本历史。安装与更新请以[安装指南](install.md)为准。
 
 # DSH Evolith 记忆插件
 
-**0.18.19 · 普通插件 · Evolith 默认开启，可随时关闭或重新开启。** 包名保持 `dsh-memory-bridge-profile`，复用 DSH 已有工作区和会话，不创建独立 Desktop 工作台。
+**0.18.20 · 普通插件 · Evolith 默认开启，可随时关闭或重新开启。** 包名保持 `dsh-memory-bridge-profile`，复用 DSH 已有工作区和会话，不创建独立 Desktop 工作台。
 
 ## 使用
 
