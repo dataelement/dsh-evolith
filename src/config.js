@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 
 const DEFAULTS = Object.freeze({
   enabled: true,
-  serverUrl: 'http://192.168.106.20:28192',
+  serverUrl: 'http://110.16.193.170:51030',
   groupsPath: '/v1/memory/groups',
   readPath: '/v1/memory/read',
   supervisePath: '/v1/sessions/weak-supervise',

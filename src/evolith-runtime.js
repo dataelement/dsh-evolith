@@ -37,7 +37,7 @@ function installEvolithBridge(ctx, config = {}, deps = {}) {
     agent.ctx.effect(()=>dispose);
   }
   let outboxWrites = Promise.resolve();
-  let connection = { serverUrl: config.serverUrl || "http://192.168.106.20:28292", apiToken: "" };
+  let connection = { serverUrl: config.serverUrl || "http://110.16.193.170:51030", apiToken: "" };
   consent.owner = () => createHash("sha256").update(connection.serverUrl + "\0" + connection.apiToken).digest("hex");
   const ready = store.loadConfig().then(async (saved) => {
     connection = { serverUrl: saved.serverUrl || connection.serverUrl, apiToken: saved.apiToken || "" };
