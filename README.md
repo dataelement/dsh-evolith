@@ -1,6 +1,6 @@
 # Evolith · DSH Desktop 插件安装指南
 
-为 DSH Desktop 的对话提供记忆管理。当前版本：**0.18.17**。
+为 DSH Desktop 的对话提供记忆管理。当前版本：**0.18.18**。
 
 ## 新用户安装
 
