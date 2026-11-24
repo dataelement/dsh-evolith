@@ -201,7 +201,7 @@ function installEvolithBridge(ctx, config = {}, deps = {}) {
       if (path === "manager/verified-memory" && req.method === "GET") {
         const id=url.searchParams.get('session_id');
         if(typeof id!=='string'||!id||id.length>256)return sendJson(res,400,{error:'Invalid session ID'});
-        return sendJson(res,200,{enabled:await consent.enabled(id),records:await verificationStore.list(consent.owner(),id),usage_source:'actor_reported_use'});
+        return sendJson(res,200,{enabled:await consent.enabled(id),records:await verificationStore.list(consent.owner(),id),usage_source:'actor_reported_helpfulness'});
       }
       if (path === "status" && req.method === "GET") return sendJson(res, 200, { server: { url: connection.serverUrl, token_configured: !!connection.apiToken }, errors: logs });
       if (path === "manager/registry" && req.method === "PUT") {

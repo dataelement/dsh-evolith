@@ -19,14 +19,14 @@ test('tool accepts four required parameters and explains both concrete benefits'
  assert.deepEqual(Object.keys(tool.parameters.properties).sort(),['benefit_type','memory_id','title','usage_summary']);
  assert.deepEqual([...tool.parameters.required].sort(),['benefit_type','memory_id','title','usage_summary']);
  assert.equal(tool.parameters.additionalProperties,false);
- assert.match(tool.description,/avoid a specific potential mistake/);assert.match(tool.description,/saved a repeated query, file read, or search/);
- assert.match(tool.description,/not independent verification/);assert.match(tool.description,/Do not perform an extra query solely/);
+ assert.match(tool.description,/may help avoid a specific mistake/);assert.match(tool.description,/may let you skip a repeated query, search, or file read/);
+ assert.match(tool.description,/not independent verification/);assert.match(tool.description,/No independent evidence, tool result, user confirmation, or additional verification is required/);
  assert.ok(tool.description.includes('Call '+VERIFIED_MEMORY_TOOL+' before your final answer'));
 });
 test('program resolves actual injected memory text, version and provenance by ID',()=>{
  const {session}=fixture();const record=validateVerification(session,args);
  assert.equal(record.memory_text,claim);assert.match(record.memory_version,/^[a-f0-9]{64}$/);
- assert.match(record.provenance,/Source batch/);assert.equal(record.used_turn,1);assert.equal(record.usage_source,'actor_reported_use');
+ assert.match(record.provenance,/Source batch/);assert.equal(record.used_turn,1);assert.equal(record.usage_source,'actor_reported_helpfulness');
  assert.equal(record.evidence,undefined);assert.equal(record.verification_source,undefined);assert.equal(record.benefit_type,'avoid_error');
 });
 test('the ID lookup uses the latest delivered version, not a stale copy or model-supplied text',()=>{
@@ -63,7 +63,7 @@ test('tool cannot record use when disabled or for a different conversation',asyn
  const {session}=fixture(),agent={session},store=new VerifiedMemoryStore();let enabled=false;
  const tool=verifiedMemoryTool({agent,store,owner:()=> 'owner',consent:{enabled:async()=>enabled}});
  await assert.rejects(tool.execute(args,{agent}),/disabled/);enabled=true;await assert.rejects(tool.execute(args,{agent:{session}}),/different/);
- const result=await tool.execute(args,{agent});assert.equal(result.recorded,true);assert.equal(result.status,'actor_reported_use');
+ const result=await tool.execute(args,{agent});assert.equal(result.recorded,true);assert.equal(result.status,'actor_reported_helpfulness');
  assert.equal((await store.list('owner',session.id))[0].memory_text,claim);
 });
 
@@ -73,4 +73,14 @@ test('benefit_type is strictly checked and persists separately from summary text
  for(const benefit_type of ['avoid_error','save_tool_calls','both'])assert.equal(validateVerification(session,{...args,benefit_type}).benefit_type,benefit_type);
  const store=new VerifiedMemoryStore(),first=validateVerification(session,args),second={...first,benefit_type:'both'};
  const a=await store.add('a','s',first),b=await store.add('a','s',second);assert.notEqual(a.id,b.id);assert.equal((await store.list('a','s')).length,2);
+});
+
+test('potential usefulness can be marked without actual use, confirmation or tool evidence',async()=>{
+ assert.match(VERIFIED_MEMORY_INSTRUCTION,/Potential usefulness is sufficient/);
+ assert.match(VERIFIED_MEMORY_INSTRUCTION,/does not have to appear in your final answer/);
+ const {session}=fixture(),agent={session},store=new VerifiedMemoryStore();
+ const tool=verifiedMemoryTool({agent,store,owner:()=> 'owner',consent:{enabled:async()=>true}});
+ const result=await tool.execute({...args,usage_summary:'该费率记忆可能帮助预留预算，避免遗漏手续费；尚未核实。'},{agent});
+ assert.equal(result.recorded,true);assert.equal(result.status,'actor_reported_helpfulness');
+ assert.equal((await store.list('owner',session.id))[0].usage_source,'actor_reported_helpfulness');
 });

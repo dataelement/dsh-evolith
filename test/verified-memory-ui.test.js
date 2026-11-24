@@ -45,7 +45,7 @@ async function popupFixture(initial=[]){
 }
 const start=(turn,seq)=>({type:'turn/start',seq,data:{turn}});
 const call=(turn,seq,id,name='evolith_record_verified_memory')=>({type:'assistant/message',seq,data:{turn,message:{content:[{type:'tool-call',id,name}]}}});
-const result=(turn,seq,id,overrides={})=>({type:'tool/result',seq,data:{turn,message:{toolCallId:id,isError:false,content:[{type:'text',text:JSON.stringify({recorded:true,status:'actor_reported_use',record_id:'record',memory_id:'m'})}],...overrides}}});
+const result=(turn,seq,id,overrides={})=>({type:'tool/result',seq,data:{turn,message:{toolCallId:id,isError:false,content:[{type:'text',text:JSON.stringify({recorded:true,status:'actor_reported_helpfulness',record_id:'record',memory_id:'m'})}],...overrides}}});
 test('loading an enabled session and its old tool results does not auto-open the panel',async()=>{
  const f=await popupFixture([start(1,1),call(1,2,'old'),result(1,3,'old'),{type:'turn/end',seq:4,data:{turn:1}}]);await new Promise(r=>setImmediate(r));assert.equal(f.opened.length,0);f.cleanup();
 });
@@ -83,4 +83,9 @@ for(const [benefit_type,expected] of [
  const f=await viewFixture([{id:'buff',title:'测试记忆',memory_text:'Stored memory',benefit_type,usage_summary:'避免了误答成 pytest 的错误，并省去了重复查询。',used_turn:1,usage_source:'actor_reported_use'}]);
  const badges=f.nodes(f.render()).filter(n=>n.props.role==='img').map(n=>n.props['aria-label']);assert.deepEqual(badges,expected);
  for(const badge of f.nodes(f.render()).filter(n=>n.props.role==='img')){assert.match(badge.props.title,/助手选择/);assert.ok(f.nodes(badge).some(n=>n.type==='svg'));}
+});
+
+test('potentially useful memories are not presented as verified or already used',async()=>{
+ const f=await viewFixture([{id:'potential',memory_id:'m',title:'手续费可能另付',usage_summary:'可能帮助预留手续费，尚未验证。',memory_text:'Fee may be paid separately.',used_turn:1,usage_source:'actor_reported_helpfulness',benefit_type:'avoid_error'}]);
+ const text=f.text(f.render());assert.match(text,/可能有帮助/);assert.match(text,/尚未验证/);assert.ok(!text.includes('已使用 · 已核实'));assert.ok(!text.includes('证据原文'));
 });

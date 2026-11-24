@@ -18,7 +18,7 @@ async function fixture(records={}){
 }
 const start=(turn=1)=>({type:'turn/start',seq:turn*10,data:{turn}});
 const call=(seq=11,name='evolith_record_verified_memory')=>({type:'assistant/message',seq,data:{turn:1,message:{content:[{type:'tool-call',id:'c'+seq,name}]}}});
-const result=(seq=12,callSeq=11,benefit_type='avoid_error',isError=false)=>({type:'tool/result',seq,data:{turn:1,message:{toolCallId:'c'+callSeq,isError,content:[{type:'text',text:JSON.stringify({recorded:true,status:'actor_reported_use',record_id:'r'+seq,benefit_type})}]}}});
+const result=(seq=12,callSeq=11,benefit_type='avoid_error',isError=false)=>({type:'tool/result',seq,data:{turn:1,message:{toolCallId:'c'+callSeq,isError,content:[{type:'text',text:JSON.stringify({recorded:true,status:'actor_reported_helpfulness',record_id:'r'+seq,benefit_type})}]}}});
 const icons=f=>f.nodes(f.button()).filter(n=>n.props.role==='img');
 for(const [records,expected] of [
  [[],null],[[{benefit_type:'avoid_error'}],'已触发避免问题'],[[{benefit_type:'save_tool_calls'}],'已触发节省调用'],[[{benefit_type:'both'}],'已触发避免问题和节省调用'],[[{benefit_type:'avoid_error'},{benefit_type:'save_tool_calls'}],'已触发避免问题和节省调用']
