@@ -8,7 +8,7 @@
 2. 粘贴下面的 GitHub 仓库地址，点击 **安装**：
 
    ```text
-   https://github.com/dataelement/dsh-memory-bridge
+   https://github.com/dataelement/dsh-evolith
    ```
 
 3. 安装完成后，**完全退出并重新打开 DSH Desktop**。
