@@ -1,4 +1,4 @@
-window.__ModuleLoader__.load({ id: "dsh-memory-bridge-profile", factory: (require) => {
+window.__ModuleLoader__.load({ id: "dsh-evolith", factory: (require) => {
   let hostContext;
   const React = require("react"), h = React.createElement, API = "/dsh-memory-bridge/manager/";
   const { createPortal } = require("react-dom");

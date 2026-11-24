@@ -1,6 +1,6 @@
 - insert:
     - id: dsh-memory-bridge-profile
-      name: dsh-memory-bridge-profile
+      name: dsh-evolith
       config:
         serverUrl: http://110.16.193.170:51030
         readTimeoutMs: 2000

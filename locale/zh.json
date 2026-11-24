@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "Evolith",
+    "title": "dsh-evolith",
     "description": "Evolith 为 DSH Desktop 提供跨会话记忆，减少重复查询与 Token 消耗。"
   }
 }

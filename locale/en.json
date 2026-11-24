@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "Evolith",
+    "title": "dsh-evolith",
     "description": "Evolith adds cross-session memory to DSH Desktop, reducing repeated lookups and token usage."
   }
 }

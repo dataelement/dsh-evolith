@@ -22,7 +22,7 @@ import { HistoryUploads } from './src/history-uploads.js'
 import { WorkspaceAutoJoin } from './src/auto-join.js'
 import { DiagnosticOutbox, diagnoseError } from './src/diagnostics.js'
 
-export const name = 'dsh-memory-bridge'
+export const name = 'dsh-evolith'
 export const inject = ['tokenMeter']
 
 const MEMORY_CONTEXT_NAME = 'dsh-memory-bridge:claims'
