@@ -197,12 +197,19 @@ window.__ModuleLoader__.load({ id: "dsh-evolith", factory: (require) => {
       target&&kind?createPortal(h('button',{type:'button',className:'dsh-evolith-help dsh-evolith-benefit-trigger dsh-evolith-benefit-trigger--active','aria-label':label,title:'第'+current.turn+'轮 · '+[benefits.avoid?'避免问题':null,benefits.save?'节省调用':null].filter(Boolean).join('、')+' · '+current.records.length+'条记忆',onClick:()=>openVerifications(sessionId,current.turn)},
         h('span',{className:'dsh-evolith-trigger-icon dsh-evolith-trigger-icon--'+kind,role:'img','aria-label':benefits.avoid&&benefits.save?'已触发避免问题和节省调用':benefits.avoid?'已触发避免问题':'已触发节省调用'},benefitGlyph(kind,20))),target):null);
   }
+  const quotaMessages = {
+    account: "额度不足，暂停生成新记忆",
+    pool: "本轮公司记忆额度已用完",
+    paused: "新记忆处理暂时暂停",
+    request: "本次记忆处理超过模型计量范围"
+  };
   function Toggle({ sessionId } = {}) {
     const [enabled, setEnabled] = React.useState(true);
     const [busy, setBusy] = React.useState(true);
     const [error, setError] = React.useState("");
     const [open, setOpen] = React.useState(false);
     const [position, setPosition] = React.useState(null);
+    const [quota, setQuota] = React.useState(null);
     const help = React.useRef(null), tip = React.useRef(null), hideTimer = React.useRef(null);
     const hovered = React.useRef(false), focused = React.useRef(false);
     const currentSession = React.useRef(sessionId);
@@ -221,14 +228,26 @@ window.__ModuleLoader__.load({ id: "dsh-evolith", factory: (require) => {
     const focusLeave = () => { focused.current = false; hideHelp(); };
     React.useEffect(() => {
       let live = true;
-      setBusy(true); setEnabled(false); setError(""); setOpen(false);
+      setBusy(true); setEnabled(false); setError(""); setOpen(false); setQuota(null);
       if (!sessionId) { setBusy(false); return () => { live = false; }; }
       api("evolith?session_id=" + encodeURIComponent(sessionId)).then(d => {
-        if (live) setEnabled(d.enabled === true);
+        if (live) { setEnabled(d.enabled === true); setQuota(d); }
       }).catch(e => { if (live) setError(e.message); })
         .finally(() => { if (live) setBusy(false); });
       return () => { live = false; cancelHide(); };
     }, [sessionId]);
+    React.useEffect(() => {
+      if (!enabled || !sessionId) return;
+      let active = true;
+      const id = encodeURIComponent(sessionId);
+      const refresh = () => api("evolith?session_id=" + id).then(d => { if (active) setQuota(d); }).catch(() => {});
+      const source = hostContext?.get?.("sessions")?.binding?.(sessionId)?.eventSource;
+      const dispose = source?.getSnapshot && source?.subscribe ? source.subscribe(() => {
+        const {change} = source.getSnapshot();
+        if (change?.kind === "append" && change.entries?.some(({event}) => event.type === "turn/end")) void refresh();
+      }) : undefined;
+      return () => { active = false; dispose?.(); };
+    }, [enabled, sessionId]);
     React.useEffect(()=>{
       let live=true;
       if(!enabled||!sessionId)return()=>{live=false};
@@ -266,7 +285,7 @@ window.__ModuleLoader__.load({ id: "dsh-evolith", factory: (require) => {
       setBusy(true); setError("");
       try {
         await api("evolith?session_id=" + encodeURIComponent(id), "PUT", { enabled: next });
-        if (currentSession.current === id) setEnabled(next);
+        if (currentSession.current === id) { setEnabled(next); setQuota(null); }
       } catch (e) { if (currentSession.current === id) setError(e.message); }
       finally { if (currentSession.current === id) setBusy(false); }
     }
@@ -292,17 +311,28 @@ window.__ModuleLoader__.load({ id: "dsh-evolith", factory: (require) => {
           h("circle", { cx: 10, cy: 10, r: 7.6 }),
           h("path", { d: "M7.8 7.6a2.3 2.3 0 0 1 4.5.7c0 1.6-2.3 1.9-2.3 3.3" }),
           h("circle", { cx: 10, cy: 14.2, r: .65, fill: "currentColor", stroke: "none" }))),
+      enabled && quotaMessages[quota?.quota_reason] ? h("a", {href: quota.workbench_url,
+        target: "_blank", rel: "noopener noreferrer", role: "status",
+        style: {fontSize: 12, color: "inherit"}, title: "打开记忆额度"},
+        quotaMessages[quota.quota_reason]) : null,
       error ? h("span", { role: "alert", title: error, style: { color: "#b42318", fontSize: 12 } }, "设置失败") : null,
       tooltip);
   }
   function Settings() {
     const [url, setUrl] = React.useState(""), [token, setToken] = React.useState(""), [data, setData] = React.useState({ errors: [] }), [message, setMessage] = React.useState("");
+    const [quota, setQuota] = React.useState(null);
+    async function loadQuota() {
+      try { setQuota(await api("quota")); }
+      catch { setQuota({ unavailable: true }); }
+    }
     async function load() {
       const r = await fetch("/dsh-memory-bridge/status", { credentials: "same-origin", cache: "no-store" });
       if (!r.ok) throw Error("无法读取本地设置");
       const d = await r.json();
       setData(d);
       setUrl(d.server.url);
+      if (d.server.token_configured) await loadQuota();
+      else setQuota(null);
     }
     React.useEffect(() => {
       load().catch((e) => setMessage(e.message));
@@ -330,6 +360,12 @@ window.__ModuleLoader__.load({ id: "dsh-evolith", factory: (require) => {
         if (side?.openTab && tabs?.get("browser")) side.openTab("browser", { params: { url: target }, revealIfOpened: false });
         else window.open(target, "_blank", "noopener,noreferrer");
       }), h("a", { href: data.server?.url ? new URL("/workbench", data.server.url).href : void 0, target: "_blank", rel: "noopener noreferrer", style: { padding: "8px 14px", border: "1px solid #d8dce2", borderRadius: 8, textDecoration: "none", color: "inherit", fontSize: 13 } }, "系统浏览器打开")),
+      quota?.enabled && data.server?.url ? h("div", {style: {display: "flex", flexWrap: "wrap", gap: 12, alignItems: "baseline"}},
+        h("strong", null, "记忆额度 · 剩余 " + Number(quota.remaining_tokens).toLocaleString("zh-CN") + " Token"),
+        h("a", {href: new URL("/workbench#groups", data.server.url).href, target: "_blank", rel: "noopener noreferrer"},
+          quota.redeem_available ? "兑换加油包" : "查看用量"),
+        quotaMessages[quota.reason] ? h("span", null, quotaMessages[quota.reason]) : null
+      ) : quota?.unavailable ? h("p", {role: "status"}, "暂时无法读取记忆额度") : null,
       h("section", { style: { padding: 24, border: "1px solid #e0e2e5", borderRadius: 12, background: "#f7f8fa", display: "grid", gap: 16 } }, h("h3", { style: { margin: 0, fontSize: 18 } }, "线上服务连接"), h("p", { style: { margin: 0, fontSize: 13, lineHeight: 1.6, color: "#737b89" } }, "先保存连接配置，再检查服务是否可访问。"), h("div", { style: { display: "grid", gridTemplateColumns: "minmax(0,1.3fr) minmax(0,1fr)", gap: 16 } }, h("label", { style: { display: "grid", gap: 8, fontSize: 14 } }, "服务器地址", h("input", { type: "url", value: url, onChange: (e) => setUrl(e.target.value), style: { width: "100%", boxSizing: "border-box", padding: 10, borderRadius: 8, border: "1px solid #d8dce2", background: "white" } })), h("label", { style: { display: "grid", gap: 8, fontSize: 14 } }, h("span", null, "访问密钥", data.server?.token_configured ? h("span", { style: { marginLeft: 8, fontSize: 12, color: "#15805d" } }, "已保存") : null), h("input", { type: "password", autoComplete: "new-password", value: token, onChange: (e) => setToken(e.target.value), placeholder: data.server?.token_configured ? "****" : "请输入访问密钥", style: { width: "100%", boxSizing: "border-box", padding: 10, borderRadius: 8, border: "1px solid #d8dce2", background: "white" } }))), h("div", { style: { display: "flex", gap: 10 } }, button("保存连接配置", async () => {
         await api("registry", "PUT", { server_url: url, ...token.trim() ? { api_token: token.trim() } : {} });
         setToken("");
@@ -338,6 +374,7 @@ window.__ModuleLoader__.load({ id: "dsh-evolith", factory: (require) => {
       }), button("检查连接", async () => {
         const d = await api("check", "POST", {});
         setMessage("连接正常 · " + d.group_id);
+        await loadQuota();
       })), h("p", { style: { margin: 0, fontSize: 13, lineHeight: 1.6, color: "#737b89" } }, "注册后会自动创建默认记忆组和访问密钥。填写账号密钥即可共享该账号的记忆，无需配置 Group ID。"), h("p", { role: "status" }, message)),
       h("details", { style: { padding: 16, border: "1px solid #e0e2e5", borderRadius: 10 } }, h("summary", null, "本地错误日志（" + (data.errors?.length || 0) + "）"), h("p", { style: { margin: 0, fontSize: 13, lineHeight: 1.6, color: "#737b89" } }, "仅在本地展示客户端报错，不上传到记忆服务器。"), h("pre", { style: { whiteSpace: "pre-wrap", maxHeight: 300, overflow: "auto" } }, data.errors?.length ? data.errors.map((x) => x.at + " " + x.message).join("\n") : "暂无错误"))
     );
