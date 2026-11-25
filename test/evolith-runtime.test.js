@@ -49,6 +49,21 @@ test("enabled session uses opt-in endpoint and appends delta after user", async 
   assert.equal(calls.length, 1);
   assert.ok(calls[0].url.endsWith("/v1/evolith/prepare"));
 });
+test("quota exhaustion preserves the conversation surface and injects existing memory", async () => {
+  const f = await fixture(async () => ({
+    ok: true,
+    json: async () => ({turn: 5, evicted_through: 0, committed_turns: 0, quota_reason: "account",
+      memory_delta: {message_text: "previously saved memory"}})
+  }));
+  await f.consent.set(f.session.id, true);
+  f.session.surface.nodes = [11];
+  f.session.append = () => assert.fail("quota failure must not prune conversation history");
+  const view = await f.hooks["agent/pre-step"]({agent: {session: f.session}, turn: 5, step: 1},
+    async () => f.decision);
+  assert.equal(view.messages[0], f.decision.messages[0]);
+  assert.equal(view.messages[1].content[0].text, "previously saved memory");
+  assert.deepEqual(f.session.surface.nodes, [11]);
+});
 test("connection revocation while read is pending prevents injection or window movement", async () => {
   let finish, started;
   const start = new Promise((resolve) => started = resolve);

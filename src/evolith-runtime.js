@@ -95,7 +95,9 @@ function installEvolithBridge(ctx, config = {}, deps = {}) {
       });
       if (response.status === 401) throw new Error("Evolith 记忆访问密钥无效或已过期。请前往「设置 → 记忆」，更新访问密钥并保存，再点击「检查连接」后重试。这不是聊天模型的 API 密钥。");
       const data = await response.json();
-      if (!response.ok) throw new Error(data.detail || data.error || "Memory HTTP " + response.status);
+      if (!response.ok) {
+        throw Object.assign(new Error(data.detail?.message || data.detail || data.error || "Memory HTTP " + response.status), { status: response.status });
+      }
       return data;
     } catch (e) {
       if (id && controller.signal.aborted && !await consent.enabled(id)) throw disabledError();
@@ -162,9 +164,9 @@ function installEvolithBridge(ctx, config = {}, deps = {}) {
       await afterPending(id);
       const state = await request("prepare", { session_id: id, turn, history: history(agent.session), query: admitted.join("\n\n") }, id);
       if (!await consent.enabled(id)) return decision;
-      if (!ctx.tokenMeter) throw new Error("当前DSH缺少tokenMeter服务，未移动会话窗口");
       if (state.evicted_through > state.committed_turns) throw new Error("服务端尚未提交历史，拒绝移出窗口");
-      replacePrefix(agent.session, ctx.tokenMeter, state);
+      if (!ctx.tokenMeter && !state.quota_reason) throw new Error("当前DSH缺少tokenMeter服务，未移动会话窗口");
+      if (ctx.tokenMeter && !state.quota_reason) replacePrefix(agent.session, ctx.tokenMeter, state);
       views.set(id, state);
       return state.memory_delta?.message_text ? { ...decision, messages: [...decision.messages, {
         id: "dsh-interval-memory:" + turn + ":" + randomUUID(),
@@ -228,10 +230,25 @@ function installEvolithBridge(ctx, config = {}, deps = {}) {
         return sendJson(res, 200, { saved: true });
       }
       if (path === "manager/check" && req.method === "POST") return sendJson(res, 200, await request("account"));
+      if (path === "manager/quota" && req.method === "GET") {
+        if (!connection.apiToken.trim()) return sendJson(res, 200, {enabled: false});
+        try {
+          return sendJson(res, 200, await request("quota"));
+        } catch (e) {
+          if (e.status === 404) return sendJson(res, 200, {enabled: false});
+          throw e;
+        }
+      }
       if (path === "manager/evolith") {
         const id = url.searchParams.get("session_id");
         if (!id || id.length > 256) return sendJson(res, 400, { error: "Invalid session ID" });
-        if (req.method === "GET") return sendJson(res, 200, { enabled: await consent.enabled(id) });
+        if (req.method === "GET") {
+          const enabled = await consent.enabled(id), reason = views.get(id)?.quota_reason;
+          const status = enabled && reason
+            ? {quota_reason: reason, workbench_url: new URL("/workbench#groups", connection.serverUrl).href}
+            : {};
+          return sendJson(res, 200, {enabled, ...status});
+        }
         if (req.method === "PUT") {
           const b = await readJson(req);
           const saved = await consent.set(id, b.enabled);
