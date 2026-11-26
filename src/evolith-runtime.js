@@ -14,7 +14,7 @@ function installEvolithBridge(ctx, config = {}, deps = {}) {
   const consent = deps.consent || new EvolithConsent(process.env.DSH_HOME ? join(process.env.DSH_HOME, "evolith-consent.json") : void 0);
   const fetchImpl = deps.fetchImpl || globalThis.fetch;
   const degraded = new Map();
-  const prepareWaitMs = deps.prepareWaitMs ?? 1000;
+  const prepareWaitMs = deps.prepareWaitMs ?? 5000;
   const logs = [], pending = /* @__PURE__ */ new Map(), views = /* @__PURE__ */ new Map(), outbox = new Map(), active = /* @__PURE__ */ new Map();
   const outboxPath = deps.outboxPath ?? (process.env.DSH_HOME ? join(process.env.DSH_HOME, "evolith-pending.json") : undefined);
   const verificationStore = deps.verificationStore || new VerifiedMemoryStore(deps.verificationPath ?? (process.env.DSH_HOME ? join(process.env.DSH_HOME, "evolith-verified-memory.json") : undefined));

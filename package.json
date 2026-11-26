@@ -1,6 +1,6 @@
 {
   "name": "dsh-evolith",
-  "version": "0.18.23",
+  "version": "0.18.24",
   "description": "Evolith 为 DSH Desktop 提供跨会话记忆，减少重复查询与 Token 消耗。",
   "type": "module",
   "main": "./index.js",
