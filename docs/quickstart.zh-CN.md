@@ -1,5 +1,5 @@
-# DSH Desktop · Evolith 安装与更新
+# DSH Desktop · Evolith 图文指南
 
-安装指南已移到仓库首页，后续统一维护：
+**[打开安装与使用指南](install.md)**
 
-**[打开最新安装指南](../README.md)**
+包含安装、获取密钥、配置连接、开启 Evolith 和查看逐轮记忆记录的截图说明。
