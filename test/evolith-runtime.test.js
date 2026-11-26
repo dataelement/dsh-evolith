@@ -124,7 +124,7 @@ test('retry exposure and completion before preparing the next feedback boundary'
   assert.deepEqual(calls,['prepare','expose','expose','complete','prepare']);
 });
 
-test('exhausted exposure delivery blocks new inference instead of rating incomplete pending memory', async () => {
+test('exhausted exposure delivery degrades memory without blocking new inference', async () => {
   const calls=[];
   const f=await fixture(async(url)=>{
     const path=url.split('/').at(-1);calls.push(path);
@@ -135,7 +135,8 @@ test('exhausted exposure delivery blocks new inference instead of rating incompl
   await f.hooks['agent/pre-step']({agent:{session:f.session},turn:1,step:1},async()=>f.decision);
   f.hooks['session/event'](f.session,{type:'assistant/message',seq:12,data:{usage:{inputTokens:1}}});
   await new Promise(resolve=>setImmediate(resolve));
-  await assert.rejects(f.hooks['agent/pre-step']({agent:{session:f.session},turn:2,step:1},async()=>f.decision),/exposure unavailable/);
+  assert.equal(await f.hooks['agent/pre-step']({agent:{session:f.session},turn:2,step:1},async()=>f.decision),f.decision);
+  assert.match(f.runtime.degraded.get(f.session.id).message,/exposure unavailable/);
   assert.deepEqual(calls,['prepare','expose','expose']);
 });
 
@@ -178,10 +179,11 @@ for (const path of ['account','prepare','complete','exposures']) test('memory 40
   const f=await fixture(async()=>({ok:false,status:401,json:async()=>{throw Error('HTML response')}}));
   await assert.rejects(f.runtime.request(path), /Evolith 记忆访问密钥无效或已过期.*设置 → 记忆.*检查连接.*不是聊天模型/);
 });
-test('memory authentication error propagates into native turn failure',async()=>{
+test('memory authentication error remains actionable but does not fail native inference',async()=>{
   const f=await fixture(async()=>({ok:false,status:401,json:async()=>({detail:'API key is invalid'})}));
   await f.consent.set(f.session.id,true);
-  await assert.rejects(f.hooks['agent/pre-step']({agent:{session:f.session},turn:1,step:1},async()=>f.decision), /Evolith 记忆访问密钥无效或已过期.*设置 → 记忆/);
+  assert.equal(await f.hooks['agent/pre-step']({agent:{session:f.session},turn:1,step:1},async()=>f.decision),f.decision);
+  assert.match(f.runtime.degraded.get(f.session.id).message,/Evolith 记忆访问密钥无效或已过期.*设置 → 记忆/);
 });
 test('other Memory errors are not mislabeled as an invalid key',async()=>{
   const f=await fixture(async()=>({ok:false,status:500,json:async()=>({detail:'writer unavailable'})}));
@@ -234,4 +236,47 @@ test('closing during a pending read cancels memory work without a turn error',as
  const res={writeHead(){},end(){}};
  await route.handler(req,res);
  assert.equal(await work,f.decision);assert.equal(f.runtime.logs.length,0);
+});
+
+test('empty-turn manifest certifies ended empty turns only, never real history or unseen turns',async()=>{
+ const f=await fixture(async()=>{throw Error('No network')});
+ const events=[{type:'turn/start',data:{turn:1}},{type:'turn/end',data:{turn:1}},{type:'turn/start',data:{turn:2}},{type:'assistant/message',data:{turn:2,message:{content:[{type:'text',text:'Background continuation'}]}}},{type:'turn/end',data:{turn:2}},{type:'turn/start',data:{turn:4}},{type:'turn/start',data:{turn:5}},{type:'turn/end',data:{turn:5}}];
+ const session={snapshotEvents:()=>events};const h=f.runtime.history(session);
+ assert.deepEqual(f.runtime.emptyTurns(session,h,4),[1]);
+ assert.deepEqual(f.runtime.emptyTurns(session,h,5),[1,5]);
+ assert.ok(!f.runtime.emptyTurns(session,h,5).includes(2));
+ assert.ok(!f.runtime.emptyTurns(session,h,5).includes(3));
+ assert.ok(!f.runtime.emptyTurns(session,h,5).includes(4));
+});
+
+for(const status of [409,503])test('Memory '+status+' does not interrupt the actor or modify its input',async()=>{
+ const f=await fixture(async()=>({ok:false,status,json:async()=>({detail:'fixture memory failure'})}));await f.consent.set(f.session.id,true);
+ const original=JSON.stringify(f.decision);
+ assert.equal(await f.hooks['agent/pre-step']({agent:{session:f.session},turn:1,step:1},async()=>f.decision),f.decision);
+ assert.equal(JSON.stringify(f.decision),original);assert.ok(f.runtime.degraded.get(f.session.id));
+});
+test('hung prepare has a bounded wait and a late response cannot prune or inject memory',async()=>{
+ let release;
+ const f=await fixture(async()=>new Promise(resolve=>release=resolve),{prepareWaitMs:10});await f.consent.set(f.session.id,true);
+ const began=performance.now();const result=await f.hooks['agent/pre-step']({agent:{session:f.session},turn:1,step:1},async()=>f.decision);
+ assert.equal(result,f.decision);assert.ok(performance.now()-began<500);assert.match(f.runtime.degraded.get(f.session.id).message,/等待超时/);
+ release({ok:true,json:async()=>({evicted_through:100,committed_turns:100,memory_delta:{message_text:'late memory'}})});
+ await new Promise(resolve=>setImmediate(resolve));assert.equal(result.messages.length,1);assert.equal(result.messages[0],f.decision.messages[0]);
+});
+test('a hung background queue cannot hold the next actor turn',async()=>{
+ let hang=false;
+ const f=await fixture(async url=>hang?new Promise(()=>{}):({ok:true,json:async()=>({turn:1,evicted_through:0,committed_turns:0,memory_delta:{}})}),{prepareWaitMs:10});
+ await f.consent.set(f.session.id,true);await f.hooks['agent/pre-step']({agent:{session:f.session},turn:1,step:1},async()=>f.decision);
+ hang=true;f.hooks['session/event'](f.session,{type:'assistant/message',seq:2,data:{usage:{inputTokens:1}}});
+ assert.equal(await f.hooks['agent/pre-step']({agent:{session:f.session},turn:2,step:1},async()=>f.decision),f.decision);
+ assert.match(f.runtime.degraded.get(f.session.id).message,/等待超时/);
+});
+
+test('Evolith compaction constraints fall back to native compaction rather than stopping the actor',async()=>{
+ const {constrainCompaction}=await import('../src/evolith-window.js');const calls=[],warnings=[];
+ const events=[{seq:1,type:'turn/start',data:{turn:1}},{seq:2,type:'user/message',data:{role:'user',content:[]}},{seq:3,type:'turn/start',data:{turn:2}},{seq:4,type:'user/message',data:{role:'user',content:[]}}];
+ const session={id:'compaction-fallback',ownEvents:()=>events,eventAt:n=>events.find(e=>e.seq===n),deriveEventMessage:e=>e?.type==='user/message'?e.data:null,surface:{nodes:[2,4]}};
+ const engine={compactRegion:async(...args)=>{calls.push(args);return 'native'}};
+ const dispose=constrainCompaction(engine,{enabled:async()=>true},(id,e)=>warnings.push(e.message));
+ assert.equal(await engine.compactRegion(2,4,{session}), 'native');assert.deepEqual(calls[0].slice(0,2),[2,4]);assert.equal(warnings.length,1);dispose();
 });

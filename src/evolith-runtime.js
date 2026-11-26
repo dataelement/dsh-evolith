@@ -13,6 +13,8 @@ function installEvolithBridge(ctx, config = {}, deps = {}) {
   const store = deps.store || new GroupConfigStore();
   const consent = deps.consent || new EvolithConsent(process.env.DSH_HOME ? join(process.env.DSH_HOME, "evolith-consent.json") : void 0);
   const fetchImpl = deps.fetchImpl || globalThis.fetch;
+  const degraded = new Map();
+  const prepareWaitMs = deps.prepareWaitMs ?? 1000;
   const logs = [], pending = /* @__PURE__ */ new Map(), views = /* @__PURE__ */ new Map(), outbox = new Map(), active = /* @__PURE__ */ new Map();
   const outboxPath = deps.outboxPath ?? (process.env.DSH_HOME ? join(process.env.DSH_HOME, "evolith-pending.json") : undefined);
   const verificationStore = deps.verificationStore || new VerifiedMemoryStore(deps.verificationPath ?? (process.env.DSH_HOME ? join(process.env.DSH_HOME, "evolith-verified-memory.json") : undefined));
@@ -55,7 +57,7 @@ function installEvolithBridge(ctx, config = {}, deps = {}) {
   ctx.inject(['agents'], scoped=>{
     if(!scoped.agents?.list)return;
     agentService=scoped.agents;
-    scoped.on('agent/created',async({agent})=>{await syncVerificationTools(agent)},{global:true});
+    scoped.on('agent/created',({agent})=>{syncVerificationTools(agent).catch(error)},{global:true});
     scoped.on('agent/disposed',({agent})=>{const id=String(agent.session.id),current=verificationTools.get(id);if(current?.agent===agent){current.dispose();verificationTools.delete(id)}},{global:true});
     scoped.effect(()=>{for(const agent of agentService.list())syncVerificationTools(agent).catch(error);return()=>{for(const entry of verificationTools.values())entry.dispose();verificationTools.clear()}});
   });
@@ -77,7 +79,7 @@ function installEvolithBridge(ctx, config = {}, deps = {}) {
     logs.push({ at: (/* @__PURE__ */ new Date()).toISOString(), message: String(e?.message || e).replaceAll(connection.apiToken || "\0", "[REDACTED]") });
     if (logs.length > 200) logs.shift();
   }
-  async function request(path, body, id) {
+  async function request(path, body, id, signal) {
     await ready;
     if (id && !await consent.enabled(id)) throw disabledError();
     if (!connection.apiToken.trim()) throw new Error("未填写 Evolith 记忆访问密钥。请前往「设置 → 记忆」，填写访问密钥并保存，再点击「检查连接」后重试。这不是聊天模型的 API 密钥。");
@@ -91,7 +93,7 @@ function installEvolithBridge(ctx, config = {}, deps = {}) {
         method: body ? "POST" : "GET",
         headers: { authorization: "Bearer " + connection.apiToken, ...body ? { "content-type": "application/json" } : {} },
         ...body ? { body: JSON.stringify(body) } : {},
-        signal: AbortSignal.any([AbortSignal.timeout(6e5), controller.signal])
+        signal: AbortSignal.any([AbortSignal.timeout(6e5), controller.signal, ...(signal ? [signal] : [])])
       });
       if (response.status === 401) throw new Error("Evolith 记忆访问密钥无效或已过期。请前往「设置 → 记忆」，更新访问密钥并保存，再点击「检查连接」后重试。这不是聊天模型的 API 密钥。");
       const data = await response.json();
@@ -119,7 +121,13 @@ function installEvolithBridge(ctx, config = {}, deps = {}) {
     }
     return out;
   }
-  ctx.inject(["compaction"], (scoped) => scoped.effect(() => constrainCompaction(scoped.compaction, consent)));
+  function emptyTurns(session, publicHistory, through) {
+    const populated=new Set(publicHistory.map(message=>message.turn));
+    // Only native, ended turns with no public content are certified empty.
+    // Missing event ranges and in-flight turns are never guessed to be empty.
+    return [...new Set(sessionEvents(session).filter(event=>event.type==='turn/end'&&Number.isInteger(event.data?.turn)&&event.data.turn>0&&event.data.turn<=through&&!populated.has(event.data.turn)).map(event=>event.data.turn))].sort((a,b)=>a-b);
+  }
+  ctx.inject(["compaction"], (scoped) => scoped.effect(() => constrainCompaction(scoped.compaction, {enabled:async id=>!degraded.has(id)&&await consent.enabled(id)}, (id,e)=>{error(e);degraded.set(id,{at:new Date().toISOString(),message:e.message})})));
   function drain(id) {
     if (pending.has(id)) return pending.get(id);
     const work = (async () => {
@@ -142,56 +150,77 @@ function installEvolithBridge(ctx, config = {}, deps = {}) {
     outbox.get(id).push({path, body});
     drain(id);
   }
-  async function afterPending(id) {
-    // Observe any failed background delivery, then retry its stable event once.
-    // A second failure blocks prepare, so a weak rating cannot miss old exposures.
-    if (pending.has(id)) await pending.get(id).catch(() => {});
-    if (outbox.get(id)?.length) await drain(id);
+  function waitForMemory(work,signal) {
+    return new Promise((resolve,reject)=>{
+      const abort=()=>{signal.removeEventListener('abort',abort);reject(new Error("后台记忆同步已超时，本轮继续对话。"))};
+      if(signal.aborted){abort();return;}
+      signal.addEventListener('abort',abort,{once:true});
+      work.then(value=>{signal.removeEventListener('abort',abort);resolve(value)},e=>{signal.removeEventListener('abort',abort);reject(e)});
+    });
+  }
+  async function afterPending(id,signal) {
+    // Preserve feedback ordering, but release this preparation at its deadline.
+    if(pending.has(id))await waitForMemory(pending.get(id).catch(()=>{}),signal);
+    if(signal.aborted)throw new Error("后台记忆同步已超时，本轮继续对话。");
+    if(outbox.get(id)?.length)await waitForMemory(drain(id),signal);
   }
   ctx.on("agent/pre-step", async ({ agent, turn, step }, next) => {
     const decision = await next(), id = String(agent.session.id);
     if (decision.kind !== "enter" || step !== 1) return decision;
-    await consent.ready;
-    if (consent.sessions[id]?.enabled !== true) return decision;
-    await ready;
-    if (!await consent.enabled(id)) return decision;
-    const admitted = decision.messages.filter((m) => m.source?.kind === "user").map(messageText).filter(Boolean);
-    if (!admitted.length) return decision;
-    try {
+    let live=true,timer;
+    const deadline=new AbortController();
+    views.delete(id);
+    const prepare=async()=>{
+      await consent.ready;
+      if (!live || consent.sessions[id]?.enabled !== true) return decision;
+      await ready;
+      if (!live || !await consent.enabled(id)) return decision;
+      const admitted = decision.messages.filter((m) => m.source?.kind === "user").map(messageText).filter(Boolean);
+      if (!admitted.length) return decision;
       if(agentService)await syncVerificationTools(agent);
-      await afterPending(id);
-      const state = await request("prepare", { session_id: id, turn, history: history(agent.session), query: admitted.join("\n\n") }, id);
-      if (!await consent.enabled(id)) return decision;
+      await afterPending(id,deadline.signal);
+      if(!live)return decision;
+      const publicHistory=history(agent.session);
+      const state = await request("prepare", { session_id: id, turn, history: publicHistory, empty_turns: emptyTurns(agent.session,publicHistory,turn-1), query: admitted.join("\n\n") }, id,deadline.signal);
+      if (!live || !await consent.enabled(id)) return decision;
       if (!ctx.tokenMeter) throw new Error("当前DSH缺少tokenMeter服务，未移动会话窗口");
       if (state.evicted_through > state.committed_turns) throw new Error("服务端尚未提交历史，拒绝移出窗口");
       replacePrefix(agent.session, ctx.tokenMeter, state);
-      views.set(id, state);
+      views.set(id, state);degraded.delete(id);
       return state.memory_delta?.message_text ? { ...decision, messages: [...decision.messages, {
         id: "dsh-interval-memory:" + turn + ":" + randomUUID(),
-        role: "user",
-        source: { kind: "user" },
-        content: [{ type: "text", text: state.memory_delta.message_text }]
+        role: "user",source: { kind: "user" },content: [{ type: "text", text: state.memory_delta.message_text }]
       }] } : decision;
+    };
+    try {
+      return await Promise.race([prepare(),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error("Evolith 等待超时，本轮保留当前上下文继续运行；记忆同步在后台处理。")),prepareWaitMs)})]);
     } catch (e) {
-      if (e?.code === "EVOLITH_DISABLED") return decision;
-      error(e);
-      throw e;
-    }
+      live=false;deadline.abort();views.delete(id);
+      if (e?.code !== "EVOLITH_DISABLED") {
+        error(e);
+        degraded.set(id,{turn,at:new Date().toISOString(),message:String(e.message||e).replaceAll(connection.apiToken||"\0","[REDACTED]")});
+      }
+      return decision;
+    } finally {live=false;clearTimeout(timer);}
   }, { global: true });
   ctx.on("session/event", (session, event) => {
+    try {
     const id = String(session.id);
     if (event.type === "assistant/message" && (event.data?.usage || event.data?.message?.source?.provider) && views.has(id)) {
       const exposureTurn = views.get(id).turn;
       enqueue(id, "expose", { session_id: id, turn: exposureTurn, event_id: String(event.seq ?? event.data.id) });
       return;
     }
-    if (event.type !== "turn/end" || !views.has(id)) return;
+    if (event.type !== "turn/end" || consent.sessions[id]?.enabled !== true) return;
+    const publicHistory=history(session);
     enqueue(id, "complete", {
       session_id: id,
       turn: event.data.turn,
-      history: history(session),
+      history: publicHistory,
+      empty_turns: emptyTurns(session,publicHistory,event.data.turn),
       memory_generation: views.get(id)?.memory_generation
     });
+    } catch(e) {error(e);}
   }, { global: true });
   ctx.inject(["webServer"], (web) => web.effect(() => web.webServer.register({ kind: "prefix", path: "/dsh-memory-bridge", handler: async (req, res) => {
     if (!isTrustedRequest(req, req.method !== "GET")) return sendJson(res, 403, { error: "Request rejected" });
@@ -215,7 +244,7 @@ function installEvolithBridge(ctx, config = {}, deps = {}) {
           for (const id of Object.keys(consent.sessions)) await consent.resetForConnection(id);
           for(const entry of verificationTools.values())entry.dispose();
           verificationTools.clear();
-          views.clear();
+          views.clear();degraded.clear();
           outbox.clear();
           await persistOutbox();
         }
@@ -231,13 +260,13 @@ function installEvolithBridge(ctx, config = {}, deps = {}) {
       if (path === "manager/evolith") {
         const id = url.searchParams.get("session_id");
         if (!id || id.length > 256) return sendJson(res, 400, { error: "Invalid session ID" });
-        if (req.method === "GET") return sendJson(res, 200, { enabled: await consent.enabled(id) });
+        if (req.method === "GET") return sendJson(res, 200, { enabled: await consent.enabled(id), warning: degraded.get(id) || null });
         if (req.method === "PUT") {
           const b = await readJson(req);
           const saved = await consent.set(id, b.enabled);
           if (!b.enabled) {
             for (const c of active.get(id) || []) c.abort();
-            views.delete(id);
+            views.delete(id);degraded.delete(id);
             outbox.delete(id);
             await persistOutbox();
           }
@@ -251,7 +280,7 @@ function installEvolithBridge(ctx, config = {}, deps = {}) {
       return sendJson(res, 400, { error: e.message });
     }
   } }), "Evolith local controls"));
-  return { consent, ready, logs, request, history, verificationStore, syncVerificationTools };
+  return { consent, ready, logs, degraded, request, history, emptyTurns, verificationStore, syncVerificationTools };
 }
 export {
   installEvolithBridge

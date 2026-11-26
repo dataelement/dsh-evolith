@@ -203,6 +203,7 @@ window.__ModuleLoader__.load({ id: "dsh-evolith", factory: (require) => {
     const [error, setError] = React.useState("");
     const [open, setOpen] = React.useState(false);
     const [position, setPosition] = React.useState(null);
+    const [warning,setWarning]=React.useState(null);
     const help = React.useRef(null), tip = React.useRef(null), hideTimer = React.useRef(null);
     const hovered = React.useRef(false), focused = React.useRef(false);
     const currentSession = React.useRef(sessionId);
@@ -240,6 +241,13 @@ window.__ModuleLoader__.load({ id: "dsh-evolith", factory: (require) => {
         openedVerificationTurns.add(key);openVerifications(sessionId,turn);
       }):undefined;
       return()=>{live=false;dispose?.()};
+    },[sessionId,enabled]);
+    React.useEffect(()=>{
+      let live=true;setWarning(null);
+      if(!sessionId||!enabled)return;
+      const update=()=>api("evolith?session_id="+encodeURIComponent(sessionId)).then(d=>{if(live&&currentSession.current===sessionId)setWarning(d.warning||null)}).catch(()=>{});
+      update();const timer=window.setInterval?.(update,2000);
+      return()=>{live=false;if(timer!==undefined)window.clearInterval?.(timer)};
     },[sessionId,enabled]);
     React.useLayoutEffect(() => {
       if (!open || !help.current || !tip.current) { setPosition(null); return; }
@@ -292,6 +300,7 @@ window.__ModuleLoader__.load({ id: "dsh-evolith", factory: (require) => {
           h("circle", { cx: 10, cy: 10, r: 7.6 }),
           h("path", { d: "M7.8 7.6a2.3 2.3 0 0 1 4.5.7c0 1.6-2.3 1.9-2.3 3.3" }),
           h("circle", { cx: 10, cy: 14.2, r: .65, fill: "currentColor", stroke: "none" }))),
+      warning ? h("span",{role:"status",title:warning.message,style:{color:"#a76c13",fontSize:12}},"记忆已降级 · 对话继续") : null,
       error ? h("span", { role: "alert", title: error, style: { color: "#b42318", fontSize: 12 } }, "设置失败") : null,
       tooltip);
   }

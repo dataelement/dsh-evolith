@@ -49,11 +49,14 @@ function replacePrefix(session, meter, state) {
     source: { kind: "user" },
     content: [{ type: "text", text: "Original conversation rounds through " + cutoff + " have left the retained conversation window." }]
   };
-  for (const prefix of blocks) {
+  const prices = new Map(meter.measure(session).nodes.map((n) => [n.seq, n.heuristicTokens]));
+  const plan=blocks.map(prefix=>{
+    const shadowedTokenCount=prefix.reduce((n,seq)=>n+prices.get(seq),0);
+    if(!Number.isFinite(shadowedTokenCount))throw new Error("Missing native token price");
+    return {prefix,shadowedTokenCount};
+  });
+  for (const {prefix,shadowedTokenCount} of plan) {
     const shadowedRange = { start: prefix[0], end: prefix.at(-1) };
-    const prices = new Map(meter.measure(session).nodes.map((n) => [n.seq, n.heuristicTokens]));
-    const shadowedTokenCount = prefix.reduce((n, seq) => n + prices.get(seq), 0);
-    if (!Number.isFinite(shadowedTokenCount)) throw new Error("Missing native token price");
     session.append("compaction/prune", { shadowedRange, shadowedSeqs: [...prefix], shadowedTokenCount, reason: "token-saving-window" });
     session.append("user/message", { ...message, id: pruneId + randomUUID() }, {
       surfaceOp: { op: "replace", startSeq: shadowedRange.start, endSeq: shadowedRange.end },
@@ -93,17 +96,25 @@ function balancedPrefix(session, nodes) {
   const cut = cuts.filter((n) => n < nodes.length).at(-1);
   return cut ? nodes.slice(0, cut) : [];
 }
-function constrainCompaction(engine, consent) {
+function constrainCompaction(engine, consent, onFallback = () => {}) {
   if (typeof engine?.compactRegion !== "function") return () => {
   };
   const original = engine.compactRegion;
   async function bounded(start, end, agent, signal) {
-    if (!await consent.enabled(String(agent.session.id))) return original.call(this, start, end, agent, signal);
-    const session = agent.session, nodes = session.surface.nodes;
-    const requested = new Set(nodes.slice(nodes.indexOf(start), nodes.indexOf(end) + 1));
-    const regions = compactableGroups(session).map((g) => balancedPrefix(session, g.nodes.filter((seq) => requested.has(seq)))).filter((group) => group.length >= 2).sort((a, b) => b.length - a.length);
-    if (!regions.length) throw new Error("Evolith cannot compact this region without crossing a round or memory boundary");
-    return original.call(this, regions[0][0], regions[0].at(-1), agent, signal);
+    let targetStart = start, targetEnd = end;
+    try {
+      if (await consent.enabled(String(agent.session.id))) {
+        const session = agent.session, nodes = session.surface.nodes;
+        const requested = new Set(nodes.slice(nodes.indexOf(start), nodes.indexOf(end) + 1));
+        const regions = compactableGroups(session).map((g) => balancedPrefix(session, g.nodes.filter((seq) => requested.has(seq)))).filter((group) => group.length >= 2).sort((a, b) => b.length - a.length);
+        if (!regions.length) throw new Error("Evolith 无可安全压缩的局部区域，交还 DSH 原生压缩。");
+        targetStart = regions[0][0]; targetEnd = regions[0].at(-1);
+      }
+    } catch (e) {
+      onFallback(String(agent.session.id), e);
+    }
+    // Native compaction errors belong to DSH; never invoke it twice.
+    return original.call(this, targetStart, targetEnd, agent, signal);
   }
   engine.compactRegion = bounded;
   return () => {

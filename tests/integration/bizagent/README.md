@@ -26,7 +26,7 @@
 2. **Evolith 开启**：同一完整回放；真实 pre-step、消息追加、TokenMeter、窗口移出和后台 complete/expose 队列。N8/B4；第5、9、13……45轮增量注入，段内模型可见前缀只追加；只移出已提交的轨迹，原始公共历史不掺入记忆块。
 3. **每轮结束**：真实 Agent.status 回到 idle，发出 idle 事件，turn/end 为 completed，原生 turnBoundary 关闭；工具及记忆消息不会增加业务轮数。
 4. **后台记忆提交人为挂起**：故意不返回 complete，Actor 依然能够结束并回到 idle；之后释放挂起并排空队列。
-5. **Memory prepare 故障**：注入明确失败，禁止继续模型推理；本轮携带错误结束，并回到 idle。
+5. **Memory prepare 故障**：注入明确失败，主模型仍按原输入完成全部步骤，原生 turn/end 为 completed 并回到 idle；错误保存在本地诊断中。
 6. **前端记忆隐藏**：用真实插件 CSS、已安装 DSH 的消息 key 函数及 jsdom 计算样式；11个注入块隐藏，普通用户文本及回复可见，原始事件和模型输入仍含记忆。
 
 以上按6个测试场景输出。对段内前缀的比较忽略仅用于日志归属的 message.id/source，但保留角色、内容、工具调用及结果关联；不是测量远端缓存命中率。

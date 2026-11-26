@@ -67,7 +67,7 @@ async function runReplay({name,enabled=true,rs=rounds,memoryFailure=false,slowCo
         assert.equal(new Set(memory.map(m=>m.id)).size,memory.length,'Duplicate memory message IDs');
         if(enabled&&turn>=5)assert.ok(memory.length,'Expected frozen memory is missing from the real model request');
         if(!enabled)assert.equal(memory.length,0,'Memory leaked into disabled session');
-        if(step===1&&enabled){
+        if(step===1&&enabled&&!memoryFailure){
           const state=calls.filter(x=>x.path==='prepare').at(-1).response;
           const prior=request.messages.flatMap(m=>m.content||[]).filter(b=>b.type==='text').map(b=>b.text);
           for(let n=1;n<turn;n++) {
@@ -170,8 +170,8 @@ async function runReplay({name,enabled=true,rs=rounds,memoryFailure=false,slowCo
       assert.equal(stats.status_events.at(-1),'idle','No idle notification for frontend');
       assert.equal(end.type,'turn/end','Turn did not close');
       if(memoryFailure){
-        assert.equal(end.data.reason.kind,'error');assert.match(JSON.stringify(end),/INJECTED_MEMORY_PREPARE_FAILURE/);assert.equal(stats.model_calls,0);
-        stats.error_surfaced=true;break;
+        assert.equal(end.data.reason.kind,'completed');assert.ok(runtime.logs.some(e=>e.message.includes('INJECTED_MEMORY_PREPARE_FAILURE')));
+        stats.error_surfaced=true;
       }
       assert.equal(end.data.reason.kind,'completed',JSON.stringify(end));
       assert.equal(step,r.steps.length,'Model step count mismatch');assert.equal(pendingCalls.length,0);
@@ -215,7 +215,7 @@ async function runReplay({name,enabled=true,rs=rounds,memoryFailure=false,slowCo
       assert.equal(runtime.logs.length,0,JSON.stringify(runtime.logs));
     }
     if(!enabled){assert.equal(calls.length,0,'Disabled mode contacted memory service');}
-    if(!memoryFailure){assert.equal(stats.model_calls,countSteps(rs));assert.equal(stats.tool_calls,countTools(rs));}
+    assert.equal(stats.model_calls,countSteps(rs));assert.equal(stats.tool_calls,countTools(rs));
     if(verificationProbe){const saved=await verificationStore.list(consent.owner(),handle.agent.session.id);assert.equal(saved.length,1);assert.equal(saved[0].memory_id,'regression-confirmed-fact');assert.equal(saved[0].usage_source,'actor_reported_helpfulness');assert.equal(saved[0].benefit_type,'avoid_error');assert.match(saved[0].memory_text,/not an authorized company execution/);stats.verified_records=saved.length;await consent.set(handle.agent.session.id,false);await runtime.syncVerificationTools(handle.agent);assert.ok(!handle.agent.ctx.get('tools').schemas().some(t=>t.name===VERIFIED_MEMORY_TOOL),'Tool still exposed after opt-out');}
     stats.prune_events=handle.agent.session.snapshotEvents().filter(e=>e.type==='compaction/prune').length;
     stats.api_calls=calls.map(c=>({path:c.path,turn:c.turn}));
@@ -316,7 +316,7 @@ await check('legacy_prune_repair_preserves_entire_multiframe_log',async()=>{
 report.passed=errors.length===0;report.finished_at=new Date().toISOString();
 await writeFile(join(output,'report.json'),JSON.stringify(report,null,2)+'\n');
 const escape=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const labels={memory_usage_tool_resolves_memory_id_in_native_loop:'记忆验证工具 · 原生执行与持久化',full_case_memory_off:'关闭记忆 · 完整业务回放',full_case_memory_on:'开启记忆 · 完整业务回放',slow_memory_completion_does_not_keep_agent_running:'后台提交挂起 · Actor仍能结束',memory_failure_is_visible_and_turn_closes:'记忆接口失败 · 正确报错并结束',memory_hidden_only_in_chat_not_in_model_history:'记忆在前端隐藏 · 模型仍能看到'};
+const labels={memory_usage_tool_resolves_memory_id_in_native_loop:'记忆验证工具 · 原生执行与持久化',full_case_memory_off:'关闭记忆 · 完整业务回放',full_case_memory_on:'开启记忆 · 完整业务回放',slow_memory_completion_does_not_keep_agent_running:'后台提交挂起 · Actor仍能结束',memory_failure_is_visible_and_turn_closes:'记忆接口失败 · 主对话正常完成并记录警告',memory_hidden_only_in_chat_not_in_model_history:'记忆在前端隐藏 · 模型仍能看到'};
 await writeFile(join(output,'index.html'),`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>BizAgentBench · DSH 自动测试</title><style>body{font:15px/1.65 system-ui;margin:40px auto;max-width:960px;padding:0 24px;color:#26344a;background:#f6f8fb}main{background:white;padding:32px;border-radius:16px}h1{font-size:26px}.success{color:#087e56}.failure{color:#b42318}table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:12px;border-bottom:1px solid #e6eaf0}pre{white-space:pre-wrap;font-size:12px}small{color:#64748b}a{color:#2463d3}</style><main><h1>BizAgentBench 第22题 · DSH 自动测试</h1><p class="${report.passed?'success':'failure'}">${report.passed?'全部通过':'存在失败'} · ${report.checks.filter(x=>x.passed).length}/${report.checks.length}项</p><p>46轮用户请求 · 121次固定 Actor 响应 · 209次业务工具调用。记忆开、关分别完整回放一次。</p><p>真实 DSH 内核 ${escape(report.kernel_version)} · Evolith ${escape(report.plugin_version)} · 新增真实模型请求0次 · 生产 Memory 请求0次</p><table><tr><th>检查</th><th>结果</th><th>耗时</th></tr>${report.checks.map(c=>`<tr><td>${labels[c.name]||escape(c.name)}${c.error?'<details><summary>错误证据</summary><pre>'+escape(c.error)+'</pre></details>':''}</td><td class="${c.passed?'success':'failure'}">${c.passed?'通过':'失败'}</td><td>${c.seconds.toFixed(3)}秒</td></tr>`).join('')}</table><p>开启记忆时：第5、9、13……45轮共11次注入；46轮均检查原生结束状态，109对段内请求的模型可见前缀保持一致。</p><p><strong>范围：</strong>固定模型/工具轨迹和本地 Memory 接口替身，检查真实 DSH 执行链路。前端隐藏使用DOM/CSS检查，并非完整Electron窗口端到端测试；不测当前模型答题准确率，也不重新评分业务世界。</p><p><a href="report.json">机器可读报告</a> · <a href="memory_on.json">开启记忆逐轮状态</a> · <a href="memory_on.events.json">完整事件</a></p><small>${escape(report.finished_at)} · 运行目录 ${escape(output)}</small></main></html>`);
 console.log(JSON.stringify({passed:report.passed,checks:report.checks.length,output,external_model_requests:0}));
 process.exitCode=errors.length?1:0;
